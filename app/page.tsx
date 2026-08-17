@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import Dice3D from "./Dice3D";
 import {
   boardNodes,
   categories,
@@ -13,26 +14,12 @@ import {
   type ThemeId,
 } from "./gameData";
 
-type Player = {
-  name: string;
-  node: number;
-  score: number;
-  relics: CategoryId[];
-};
-
+type Player = { name: string; node: number; score: number; relics: CategoryId[] };
 type Phase = "roll" | "move" | "question" | "result" | "finished";
-
 type Verdict = { correct: boolean; label: string } | null;
 
 function normalise(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9 ]/g, " ")
-    .replace(/\b(the|a|an|sir|king|mount|mt)\b/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\b(the|a|an|sir|king|mount|mt)\b/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function levenshtein(a: string, b: string) {
@@ -41,9 +28,7 @@ function levenshtein(a: string, b: string) {
   for (let j = 0; j <= a.length; j += 1) matrix[0][j] = j;
   for (let i = 1; i <= b.length; i += 1) {
     for (let j = 1; j <= a.length; j += 1) {
-      matrix[i][j] = b[i - 1] === a[j - 1]
-        ? matrix[i - 1][j - 1]
-        : Math.min(matrix[i - 1][j - 1] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j] + 1);
+      matrix[i][j] = b[i - 1] === a[j - 1] ? matrix[i - 1][j - 1] : Math.min(matrix[i - 1][j - 1] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j] + 1);
     }
   }
   return matrix[b.length][a.length];
@@ -53,13 +38,9 @@ function judgeLocally(spoken: string, question: Question): Verdict {
   const candidate = normalise(spoken);
   const accepted = [question.answer, ...(question.alternatives ?? [])].map(normalise);
   if (!candidate) return { correct: false, label: "I didn't catch an answer." };
-  if (accepted.some((answer) => candidate === answer)) return { correct: true, label: "Exact meaning recognised" };
-  if (accepted.some((answer) => answer.length > 3 && (candidate.includes(answer) || answer.includes(candidate)))) {
-    return { correct: true, label: "Equivalent answer recognised" };
-  }
-  if (accepted.some((answer) => answer.length >= 6 && levenshtein(candidate, answer) <= 2)) {
-    return { correct: true, label: "Pronunciation/transcription variation accepted" };
-  }
+  if (accepted.some((item) => candidate === item)) return { correct: true, label: "Exact meaning recognised" };
+  if (accepted.some((item) => item.length > 3 && (candidate.includes(item) || item.includes(candidate)))) return { correct: true, label: "Equivalent answer recognised" };
+  if (accepted.some((item) => item.length >= 6 && levenshtein(candidate, item) <= 2)) return { correct: true, label: "Pronunciation/transcription variation accepted" };
   return { correct: false, label: "Not matched with enough confidence" };
 }
 
@@ -87,7 +68,6 @@ export default function Home() {
   const theme = getTheme(themeId);
   const activePlayer = players[activeIndex];
   const currentNode = boardNodes[activePlayer.node];
-
   const cssVars = useMemo(() => ({
     "--accent": theme.accent,
     "--accent2": theme.accent2,
@@ -109,8 +89,7 @@ export default function Home() {
     setScreen("game");
   }
 
-  function rollDice() {
-    const value = Math.floor(Math.random() * 3) + 1;
+  function completeDiceRoll(value: number) {
     const targets = getReachable(activePlayer.node, value).filter((id) => id !== 0 || activePlayer.relics.length >= 4);
     setRoll(value);
     setReachable(targets);
@@ -165,8 +144,7 @@ export default function Home() {
     recognition.onerror = () => { setListening(false); recognitionRef.current = null; };
     recognition.onresult = (event: any) => {
       const finalResult = event.results[event.results.length - 1];
-      const transcript = finalResult[0]?.transcript ?? "";
-      setAnswer(transcript);
+      setAnswer(finalResult[0]?.transcript ?? "");
     };
     recognitionRef.current = recognition;
     recognition.start();
@@ -176,10 +154,7 @@ export default function Home() {
     if (!question) return;
     const result = forceCorrect ? { correct: true, label: "Accepted by the players" } : judgeLocally(answer, question);
     setVerdict(result);
-    if (!result.correct) {
-      setPhase("result");
-      return;
-    }
+    if (!result.correct) { setPhase("result"); return; }
 
     const destination = boardNodes[players[activeIndex].node];
     const riskBonus = destination.kind === "risk" ? 100 : 0;
@@ -224,28 +199,19 @@ export default function Home() {
           <div className="eyebrow">ASTERIA • TABLETOP AI TRIVIA</div>
           <h1>Choose your world.</h1>
           <p className="setupLead">The theme changes the board, atmosphere, host and rewards — not the breadth of the trivia.</p>
-
           <div className="themeGrid">
             {themes.map((option) => (
-              <button
-                key={option.id}
-                className={`themeCard ${themeId === option.id ? "selected" : ""}`}
-                onClick={() => setThemeId(option.id)}
-                style={{ "--cardAccent": option.accent, background: option.backdrop } as React.CSSProperties}
-              >
+              <button key={option.id} className={`themeCard ${themeId === option.id ? "selected" : ""}`} onClick={() => setThemeId(option.id)} style={{ "--cardAccent": option.accent, background: option.backdrop } as React.CSSProperties}>
                 <span className="themeGlyph">{option.id === "victorian" ? "✥" : option.id === "cosmic" ? "◉" : "♜"}</span>
-                <strong>{option.name}</strong>
-                <small>{option.strapline}</small>
+                <strong>{option.name}</strong><small>{option.strapline}</small>
               </button>
             ))}
           </div>
-
           <div className="nameRow">
             <label><span>Player one</span><input value={names[0]} onChange={(e) => setNames([e.target.value, names[1]])} /></label>
             <div className="versus">VS</div>
             <label><span>Player two</span><input value={names[1]} onChange={(e) => setNames([names[0], e.target.value])} /></label>
           </div>
-
           <div className="setupFooter">
             <div><b>{theme.boardName}</b><span>Collect 4 knowledge {theme.rewardName}s, then reach the centre and survive the finale.</span></div>
             <button className="primary" onClick={startGame}>Enter the board <span>→</span></button>
@@ -265,10 +231,7 @@ export default function Home() {
       </header>
 
       <section className="tableLayout">
-        <aside className="playerRail leftRail">
-          <PlayerPanel player={players[0]} active={activeIndex === 0} themeReward={theme.rewardName} />
-        </aside>
-
+        <aside className="playerRail leftRail"><PlayerPanel player={players[0]} active={activeIndex === 0} themeReward={theme.rewardName} /></aside>
         <div className="boardStage">
           <div className="boardHalo" />
           <div className="board">
@@ -280,21 +243,14 @@ export default function Home() {
               }))}
             </svg>
 
-            <div className="boardTitle"><span>{activePlayer.name}&apos;s turn</span><b>{phase === "roll" ? "Roll to discover your routes" : phase === "move" ? `Choose a destination ${roll} steps away` : "Knowledge decides what happens next"}</b></div>
+            <div className="boardTitle"><span>{activePlayer.name}&apos;s turn</span><b>{phase === "roll" ? "Tap the die to begin" : phase === "move" ? `Rolled ${roll} — choose your destination` : "Knowledge decides what happens next"}</b></div>
 
             {boardNodes.map((node) => {
               const category = categories[node.category];
               const isTarget = reachable.includes(node.id);
               const locked = node.id === 0 && activePlayer.relics.length < 4;
               return (
-                <button
-                  key={node.id}
-                  className={`boardNode ${node.kind} ${isTarget ? "target" : ""} ${locked ? "locked" : ""}`}
-                  style={{ left: `${node.x}%`, top: `${node.y}%`, "--nodeColor": category.color } as React.CSSProperties}
-                  disabled={phase !== "move" || !isTarget}
-                  onClick={() => selectDestination(node.id)}
-                  aria-label={node.label}
-                >
+                <button key={node.id} className={`boardNode ${node.kind} ${isTarget ? "target" : ""} ${locked ? "locked" : ""}`} style={{ left: `${node.x}%`, top: `${node.y}%`, "--nodeColor": category.color } as React.CSSProperties} disabled={phase !== "move" || !isTarget} onClick={() => selectDestination(node.id)} aria-label={node.label}>
                   <span>{node.id === 0 ? "✦" : category.symbol}</span>
                   <small>{node.id === 0 ? (locked ? "LOCKED" : "FINALE") : node.kind === "risk" ? "×2" : node.kind === "portal" ? "↯" : ""}</small>
                 </button>
@@ -303,23 +259,10 @@ export default function Home() {
 
             {players.map((player, index) => {
               const node = boardNodes[player.node];
-              return (
-                <div
-                  key={player.name + index}
-                  className={`pawn pawn${index + 1} ${activeIndex === index ? "active" : ""}`}
-                  style={{ left: `${node.x}%`, top: `${node.y}%` }}
-                  title={player.name}
-                ><span>{index + 1}</span></div>
-              );
+              return <div key={player.name + index} className={`pawn pawn${index + 1} ${activeIndex === index ? "active" : ""}`} style={{ left: `${node.x}%`, top: `${node.y}%` }} title={player.name}><span>{index + 1}</span></div>;
             })}
 
-            {phase === "roll" && (
-              <button className="diceButton" onClick={rollDice}>
-                <span className="diceFace">{roll ?? "✦"}</span>
-                <b>ROLL</b>
-                <small>1–3 spaces</small>
-              </button>
-            )}
+            {phase === "roll" && <Dice3D onResult={completeDiceRoll} />}
           </div>
         </div>
 
@@ -338,40 +281,19 @@ export default function Home() {
         <div className="questionScrim">
           <article className="questionCard">
             <div className="questionArt" aria-hidden="true">
-              <div className="artFrame">
-                <span>{categories[question.category].symbol}</span>
-                <b>{categories[question.category].neutralArt}</b>
-                <small>{question.artCue}</small>
-              </div>
+              <div className="artFrame"><span>{categories[question.category].symbol}</span><b>{categories[question.category].neutralArt}</b><small>{question.artCue}</small></div>
               <div className="spoilerSeal">SPOILER-SAFE ART</div>
             </div>
-
             <div className="questionBody">
-              <div className="questionMeta">
-                <span style={{ color: categories[question.category].color }}>{categories[question.category].name}</span>
-                <span>Difficulty {question.difficulty}/5</span>
-                <span>{currentNode.kind === "risk" ? "High stakes • +100" : "Standard challenge"}</span>
-              </div>
+              <div className="questionMeta"><span style={{ color: categories[question.category].color }}>{categories[question.category].name}</span><span>Difficulty {question.difficulty}/5</span><span>{currentNode.kind === "risk" ? "High stakes • +100" : "Standard challenge"}</span></div>
               <h3>{question.question}</h3>
-
               {phase === "question" ? (
                 <>
                   <div className="answerBox">
-                    <input
-                      autoFocus
-                      value={answer}
-                      onChange={(e) => setAnswer(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && submitAnswer()}
-                      placeholder="Say it or type it…"
-                    />
-                    <button className={`micButton ${listening ? "listening" : ""}`} onClick={listenForAnswer}>
-                      {listening ? "● Listening" : "◉ Speak answer"}
-                    </button>
+                    <input autoFocus value={answer} onChange={(e) => setAnswer(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submitAnswer()} placeholder="Say it or type it…" />
+                    <button className={`micButton ${listening ? "listening" : ""}`} onClick={listenForAnswer}>{listening ? "● Listening" : "◉ Speak answer"}</button>
                   </div>
-                  <div className="questionActions">
-                    <button className="secondary" onClick={() => speakQuestion()}>↻ Hear again</button>
-                    <button className="primary" onClick={() => submitAnswer()}>Lock answer</button>
-                  </div>
+                  <div className="questionActions"><button className="secondary" onClick={() => speakQuestion()}>↻ Hear again</button><button className="primary" onClick={() => submitAnswer()}>Lock answer</button></div>
                   <p className="voiceNote">Speech is matched tolerantly for transcription and pronunciation differences. Ambiguous rulings can be overridden by the players.</p>
                 </>
               ) : (
@@ -381,22 +303,14 @@ export default function Home() {
                   <div className="answerReveal"><small>ANSWER</small><b>{question.answer}</b></div>
                   <p>{question.explanation}</p>
                   {lastReward && <div className="rewardToast">✦ {lastReward}</div>}
-                  {!verdict?.correct && phase !== "finished" && (
-                    <button className="overrideButton" onClick={() => submitAnswer(true)}>We meant that — accept answer</button>
-                  )}
+                  {!verdict?.correct && phase !== "finished" && <button className="overrideButton" onClick={() => submitAnswer(true)}>We meant that — accept answer</button>}
                   {phase !== "finished" && <button className="primary wide" onClick={endTurn}>Pass to {players[(activeIndex + 1) % 2].name} →</button>}
                 </div>
               )}
             </div>
           </article>
-
           {phase === "finished" && (
-            <div className="winnerOverlay">
-              <span>THE ARCHIVE OPENS</span>
-              <h2>{winner} wins</h2>
-              <p>{theme.finaleName} yields its final secret.</p>
-              <button className="primary" onClick={() => setScreen("setup")}>Play another world</button>
-            </div>
+            <div className="winnerOverlay"><span>THE ARCHIVE OPENS</span><h2>{winner} wins</h2><p>{theme.finaleName} yields its final secret.</p><button className="primary" onClick={() => setScreen("setup")}>Play another world</button></div>
           )}
         </div>
       )}
@@ -412,9 +326,7 @@ function PlayerPanel({ player, active, themeReward }: { player: Player; active: 
       <div className="relicHeader"><span>{themeReward}s</span><b>{player.relics.length}/4</b></div>
       <div className="relicGrid">
         {(["history", "science", "world", "culture", "nature"] as CategoryId[]).map((id) => (
-          <div key={id} className={`relic ${player.relics.includes(id) ? "won" : ""}`} style={{ "--relicColor": categories[id].color } as React.CSSProperties} title={categories[id].name}>
-            {categories[id].symbol}
-          </div>
+          <div key={id} className={`relic ${player.relics.includes(id) ? "won" : ""}`} style={{ "--relicColor": categories[id].color } as React.CSSProperties} title={categories[id].name}>{categories[id].symbol}</div>
         ))}
       </div>
     </section>
