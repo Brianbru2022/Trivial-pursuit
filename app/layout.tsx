@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import "./victorian-art-apply.css";
 
 export const metadata: Metadata = {
   title: "Trivial Pursuit AI",
