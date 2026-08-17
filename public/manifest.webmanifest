@@ -1,0 +1,9 @@
+{
+  "name": "Trivial Pursuit AI",
+  "short_name": "Trivia AI",
+  "description": "A tablet-first AI trivia board game",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#07111f",
+  "theme_color": "#111827"
+}
