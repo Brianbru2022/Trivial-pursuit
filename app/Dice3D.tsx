@@ -1,9 +1,10 @@
 "use client";
 
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { ContactShadows, Environment, RoundedBox } from "@react-three/drei";
+import { ContactShadows, RoundedBox } from "@react-three/drei";
 import { useMemo, useRef, useState } from "react";
 import * as THREE from "three";
+import styles from "./Dice3D.module.css";
 
 type Dice3DProps = {
   disabled?: boolean;
@@ -44,10 +45,9 @@ function Pip({ position, rotation = [0, 0, 0] }: { position: [number, number, nu
 }
 
 function FacePips({ face, value }: { face: "+y" | "-y" | "+x" | "-x" | "+z" | "-z"; value: number }) {
-  const pips = PIP_LAYOUTS[value];
   return (
     <>
-      {pips.map(([a, b], index) => {
+      {PIP_LAYOUTS[value].map(([a, b], index) => {
         if (face === "+y") return <Pip key={index} position={[a, 0.817, b]} />;
         if (face === "-y") return <Pip key={index} position={[a, -0.817, -b]} rotation={[Math.PI, 0, 0]} />;
         if (face === "+x") return <Pip key={index} position={[0.817, a, -b]} rotation={[0, 0, -Math.PI / 2]} />;
@@ -68,8 +68,7 @@ function BrassDie({ disabled, onResult, rolling, setRolling }: Dice3DProps & { r
   const targetQuaternions = useMemo(() => {
     const map = new Map<number, THREE.Quaternion>();
     Object.entries(FACE_ROTATIONS).forEach(([value, rotation]) => {
-      const euler = new THREE.Euler(rotation[0], rotation[1], rotation[2], "XYZ");
-      map.set(Number(value), new THREE.Quaternion().setFromEuler(euler));
+      map.set(Number(value), new THREE.Quaternion().setFromEuler(new THREE.Euler(...rotation, "XYZ")));
     });
     return map;
   }, []);
@@ -89,8 +88,7 @@ function BrassDie({ disabled, onResult, rolling, setRolling }: Dice3DProps & { r
     if (!die || !roll || finished.current) return;
 
     const elapsed = (performance.now() - roll.startedAt) / 1000;
-    const duration = 2.1;
-    const progress = Math.min(elapsed / duration, 1);
+    const progress = Math.min(elapsed / 2.1, 1);
     const travel = 1 - Math.pow(1 - Math.min(progress / 0.78, 1), 3);
 
     die.position.x = THREE.MathUtils.lerp(-2.65, 1.55, travel);
@@ -105,8 +103,7 @@ function BrassDie({ disabled, onResult, rolling, setRolling }: Dice3DProps & { r
       die.rotation.z = progress * Math.PI * 8.2 - 0.3;
     } else {
       if (!roll.settleQuaternion) roll.settleQuaternion = die.quaternion.clone();
-      const settleProgress = (progress - 0.74) / 0.26;
-      const eased = 1 - Math.pow(1 - settleProgress, 4);
+      const eased = 1 - Math.pow(1 - ((progress - 0.74) / 0.26), 4);
       die.quaternion.copy(roll.settleQuaternion).slerp(targetQuaternions.get(roll.result)!, eased);
     }
 
@@ -127,23 +124,12 @@ function BrassDie({ disabled, onResult, rolling, setRolling }: Dice3DProps & { r
       ref={group}
       position={[-2.65, 0.88, 0.35]}
       rotation={[0.35, 0.7, -0.3]}
-      onClick={(event) => {
-        event.stopPropagation();
-        beginRoll();
-      }}
-      onPointerOver={() => {
-        if (!disabled && !rolling) gl.domElement.style.cursor = "pointer";
-      }}
+      onClick={(event) => { event.stopPropagation(); beginRoll(); }}
+      onPointerOver={() => { if (!disabled && !rolling) gl.domElement.style.cursor = "pointer"; }}
       onPointerOut={() => { gl.domElement.style.cursor = "default"; }}
     >
       <RoundedBox args={[1.6, 1.6, 1.6]} radius={0.19} smoothness={6} castShadow receiveShadow>
-        <meshPhysicalMaterial
-          color="#b78432"
-          roughness={0.26}
-          metalness={0.76}
-          clearcoat={0.38}
-          clearcoatRoughness={0.24}
-        />
+        <meshPhysicalMaterial color="#b78432" roughness={0.26} metalness={0.76} clearcoat={0.38} clearcoatRoughness={0.24} />
       </RoundedBox>
       <FacePips face="+y" value={1} />
       <FacePips face="-y" value={6} />
@@ -159,25 +145,15 @@ export default function Dice3D({ disabled = false, onResult }: Dice3DProps) {
   const [rolling, setRolling] = useState(false);
 
   return (
-    <div className={`dice3d ${rolling ? "isRolling" : ""}`}>
-      <Canvas
-        shadows
-        dpr={[1, 1.75]}
-        camera={{ position: [0, 4.6, 7.2], fov: 34 }}
-        gl={{ antialias: true, alpha: true }}
-      >
+    <div className={`${styles.root} ${rolling ? styles.rolling : ""}`}>
+      <Canvas shadows dpr={[1, 1.75]} camera={{ position: [0, 4.6, 7.2], fov: 34 }} gl={{ antialias: true, alpha: true }}>
         <ambientLight intensity={0.78} />
         <directionalLight position={[-4, 7, 4]} intensity={3.4} castShadow shadow-mapSize-width={1024} shadow-mapSize-height={1024} />
         <pointLight position={[4, 3, 3]} intensity={16} color="#d9a64d" distance={9} />
         <BrassDie disabled={disabled} onResult={onResult} rolling={rolling} setRolling={setRolling} />
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]} receiveShadow>
-          <planeGeometry args={[9, 5]} />
-          <shadowMaterial transparent opacity={0.18} />
-        </mesh>
         <ContactShadows position={[0, 0.035, 0]} opacity={0.48} scale={8} blur={2.8} far={4} />
-        <Environment preset="warehouse" />
       </Canvas>
-      <div className="diceInstruction" aria-live="polite">
+      <div className={styles.instruction} aria-live="polite">
         <b>{rolling ? "Rolling…" : "Tap the brass die"}</b>
         <span>{rolling ? "The result will settle naturally" : "Roll 1–6 spaces"}</span>
       </div>
