@@ -173,6 +173,14 @@ function ResultFace({ value }: { value: number }) {
   );
 }
 
+export function DiceResultIcon({ value }: { value: number }) {
+  return (
+    <div className={styles.persistentResult} aria-label={`Last roll ${value}`}>
+      <ResultFace value={value} />
+    </div>
+  );
+}
+
 export default function Dice3D({ disabled = false, onResult }: Dice3DProps) {
   const [rolling, setRolling] = useState(false);
   const [visibleResult, setVisibleResult] = useState<number | null>(null);
