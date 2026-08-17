@@ -64,14 +64,15 @@ function FacePips({ face, value }: { face: "+y" | "-y" | "+x" | "-x" | "+z" | "-
 
 function CameraRig() {
   const { camera } = useThree();
-  useFrame(() => camera.lookAt(0, 0.55, 0));
+  useFrame(() => camera.lookAt(0, 0.62, 0));
   return null;
 }
 
-function BrassDie({ disabled, onResult, rolling, setRolling, setVisibleResult }: Dice3DProps & {
+function BrassDie({ disabled, onResult, rolling, setRolling, setVisibleResult, setFlying }: Dice3DProps & {
   rolling: boolean;
   setRolling: (value: boolean) => void;
   setVisibleResult: (value: number | null) => void;
+  setFlying: (value: boolean) => void;
 }) {
   const group = useRef<THREE.Group>(null);
   const state = useRef<RollState | null>(null);
@@ -90,6 +91,7 @@ function BrassDie({ disabled, onResult, rolling, setRolling, setVisibleResult }:
     if (disabled || rolling || !group.current) return;
     const result = Math.floor(Math.random() * 6) + 1;
     setVisibleResult(null);
+    setFlying(false);
     state.current = { startedAt: performance.now(), result, settleQuaternion: null };
     finished.current = false;
     setRolling(true);
@@ -105,10 +107,10 @@ function BrassDie({ disabled, onResult, rolling, setRolling, setVisibleResult }:
     const progress = Math.min(elapsed / 1.9, 1);
     const travel = 1 - Math.pow(1 - Math.min(progress / 0.79, 1), 3);
 
-    die.position.x = THREE.MathUtils.lerp(-1.55, 0.6, travel);
-    die.position.z = THREE.MathUtils.lerp(0.4, -0.05, travel);
-    const mainArc = Math.sin(Math.min(progress / 0.76, 1) * Math.PI) * 1.35;
-    const settleBounce = progress > 0.72 ? Math.abs(Math.sin((progress - 0.72) * 25)) * (1 - progress) * 0.8 : 0;
+    die.position.x = THREE.MathUtils.lerp(-1.35, 0.5, travel);
+    die.position.z = THREE.MathUtils.lerp(0.45, -0.02, travel);
+    const mainArc = Math.sin(Math.min(progress / 0.76, 1) * Math.PI) * 1.15;
+    const settleBounce = progress > 0.72 ? Math.abs(Math.sin((progress - 0.72) * 25)) * (1 - progress) * 0.65 : 0;
     die.position.y = 0.72 + mainArc + settleBounce;
 
     if (progress < 0.73) {
@@ -122,22 +124,23 @@ function BrassDie({ disabled, onResult, rolling, setRolling, setVisibleResult }:
     }
 
     if (progress >= 1) {
-      die.position.set(0.6, 0.72, -0.05);
+      die.position.set(0.5, 0.72, -0.02);
       die.quaternion.copy(targetQuaternions.get(roll.result)!);
       finished.current = true;
       state.current = null;
       setVisibleResult(roll.result);
+      window.setTimeout(() => setFlying(true), 420);
       window.setTimeout(() => {
         setRolling(false);
         onResult(roll.result);
-      }, 900);
+      }, 1250);
     }
   });
 
   return (
     <group
       ref={group}
-      position={[-1.55, 0.72, 0.4]}
+      position={[-1.35, 0.72, 0.45]}
       rotation={[0.25, 0.45, -0.2]}
       onClick={(event) => { event.stopPropagation(); beginRoll(); }}
       onPointerOver={() => { if (!disabled && !rolling) gl.domElement.style.cursor = "pointer"; }}
@@ -156,37 +159,52 @@ function BrassDie({ disabled, onResult, rolling, setRolling, setVisibleResult }:
   );
 }
 
+function ResultFace({ value }: { value: number }) {
+  return (
+    <div className={styles.flatDieFace} aria-label={`Rolled ${value}`}>
+      {PIP_LAYOUTS[value].map(([x, y], index) => (
+        <span
+          key={index}
+          className={styles.flatPip}
+          style={{ left: `${50 + x * 68}%`, top: `${50 - y * 68}%` }}
+        />
+      ))}
+    </div>
+  );
+}
+
 export default function Dice3D({ disabled = false, onResult }: Dice3DProps) {
   const [rolling, setRolling] = useState(false);
   const [visibleResult, setVisibleResult] = useState<number | null>(null);
+  const [flying, setFlying] = useState(false);
 
   return (
     <div className={`${styles.root} ${rolling ? styles.rolling : ""}`}>
-      <Canvas shadows dpr={[1, 1.6]} camera={{ position: [0, 5.6, 7.8], fov: 38 }} gl={{ antialias: true, alpha: true }}>
+      <Canvas shadows dpr={[1, 1.6]} camera={{ position: [0, 3.5, 8.5], fov: 39 }} gl={{ antialias: true, alpha: true }}>
         <CameraRig />
-        <ambientLight intensity={0.92} />
-        <directionalLight position={[-4, 8, 5]} intensity={3.2} castShadow shadow-mapSize-width={1024} shadow-mapSize-height={1024} />
-        <pointLight position={[3, 4, 3]} intensity={14} color="#e0ac55" distance={10} />
+        <ambientLight intensity={0.9} />
+        <directionalLight position={[-4, 7, 5]} intensity={3.1} castShadow shadow-mapSize-width={1024} shadow-mapSize-height={1024} />
+        <pointLight position={[3, 3, 4]} intensity={13} color="#e0ac55" distance={10} />
         <BrassDie
           disabled={disabled}
           onResult={onResult}
           rolling={rolling}
           setRolling={setRolling}
           setVisibleResult={setVisibleResult}
+          setFlying={setFlying}
         />
-        <ContactShadows position={[0, 0.035, 0]} opacity={0.48} scale={8} blur={2.5} far={5} />
+        <ContactShadows position={[0, 0.035, 0]} opacity={0.46} scale={8} blur={2.5} far={5} />
       </Canvas>
 
       {visibleResult !== null && (
-        <div className={styles.resultBadge} aria-live="assertive">
-          <span>ROLLED</span>
-          <b>{visibleResult}</b>
+        <div className={`${styles.flyawayDie} ${flying ? styles.flyawayActive : ""}`}>
+          <ResultFace value={visibleResult} />
         </div>
       )}
 
       <div className={styles.instruction} aria-live="polite">
         <b>{rolling ? (visibleResult ? `You rolled ${visibleResult}` : "Rolling…") : "Tap the brass die"}</b>
-        <span>{rolling ? "Result shown when the die settles" : "Roll 1–6 spaces"}</span>
+        <span>{rolling ? "The result will move to the corner" : "Roll 1–6 spaces"}</span>
       </div>
     </div>
   );
