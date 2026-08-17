@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import Dice3D from "./Dice3D";
+import Dice3D, { DiceResultIcon } from "./Dice3D";
 import {
   boardNodes,
   categories,
@@ -224,6 +224,7 @@ export default function Home() {
   return (
     <main className="gamePage" style={cssVars}>
       <div className="worldTexture" />
+      {roll !== null && phase !== "roll" && <DiceResultIcon value={roll} />}
       <header className="topBar">
         <div><span className="eyebrow">{theme.name}</span><h2>{theme.boardName}</h2></div>
         <div className="hostPill"><span className="hostOrb">✦</span><div><small>YOUR HOST</small><b>{theme.hostName}</b></div></div>
