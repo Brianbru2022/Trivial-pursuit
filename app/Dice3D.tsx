@@ -2,7 +2,7 @@
 
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { ContactShadows, RoundedBox } from "@react-three/drei";
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import * as THREE from "three";
 import styles from "./Dice3D.module.css";
 
@@ -15,6 +15,7 @@ type RollState = {
   startedAt: number;
   result: number;
   settleQuaternion: THREE.Quaternion | null;
+  targetQuaternion: THREE.Quaternion | null;
 };
 
 const PIP_LAYOUTS: Record<number, [number, number][]> = {
@@ -26,13 +27,13 @@ const PIP_LAYOUTS: Record<number, [number, number][]> = {
   6: [[-0.34, 0.42], [0.34, 0.42], [-0.34, 0], [0.34, 0], [-0.34, -0.42], [0.34, -0.42]],
 };
 
-const FACE_ROTATIONS: Record<number, [number, number, number]> = {
-  1: [0, 0, 0],
-  2: [-Math.PI / 2, 0, 0],
-  3: [0, 0, Math.PI / 2],
-  4: [0, 0, -Math.PI / 2],
-  5: [Math.PI / 2, 0, 0],
-  6: [Math.PI, 0, 0],
+const FACE_NORMALS: Record<number, THREE.Vector3> = {
+  1: new THREE.Vector3(0, 1, 0),
+  6: new THREE.Vector3(0, -1, 0),
+  3: new THREE.Vector3(1, 0, 0),
+  4: new THREE.Vector3(-1, 0, 0),
+  2: new THREE.Vector3(0, 0, 1),
+  5: new THREE.Vector3(0, 0, -1),
 };
 
 function Pip({ position, rotation = [0, 0, 0] }: { position: [number, number, number]; rotation?: [number, number, number] }) {
@@ -77,22 +78,20 @@ function BrassDie({ disabled, onResult, rolling, setRolling, setVisibleResult, s
   const group = useRef<THREE.Group>(null);
   const state = useRef<RollState | null>(null);
   const finished = useRef(false);
-  const { gl } = useThree();
+  const { gl, camera } = useThree();
 
-  const targetQuaternions = useMemo(() => {
-    const map = new Map<number, THREE.Quaternion>();
-    Object.entries(FACE_ROTATIONS).forEach(([value, rotation]) => {
-      map.set(Number(value), new THREE.Quaternion().setFromEuler(new THREE.Euler(...rotation, "XYZ")));
-    });
-    return map;
-  }, []);
+  function makeCameraFacingQuaternion(result: number, position: THREE.Vector3) {
+    const faceNormal = FACE_NORMALS[result].clone().normalize();
+    const cameraDirection = camera.position.clone().sub(position).normalize();
+    return new THREE.Quaternion().setFromUnitVectors(faceNormal, cameraDirection);
+  }
 
   function beginRoll() {
     if (disabled || rolling || !group.current) return;
     const result = Math.floor(Math.random() * 6) + 1;
     setVisibleResult(null);
     setFlying(false);
-    state.current = { startedAt: performance.now(), result, settleQuaternion: null };
+    state.current = { startedAt: performance.now(), result, settleQuaternion: null, targetQuaternion: null };
     finished.current = false;
     setRolling(true);
     gl.domElement.style.cursor = "default";
@@ -118,22 +117,25 @@ function BrassDie({ disabled, onResult, rolling, setRolling, setVisibleResult, s
       die.rotation.y = progress * Math.PI * 7 + 0.45;
       die.rotation.z = progress * Math.PI * 8 - 0.2;
     } else {
-      if (!roll.settleQuaternion) roll.settleQuaternion = die.quaternion.clone();
+      if (!roll.settleQuaternion) {
+        roll.settleQuaternion = die.quaternion.clone();
+        roll.targetQuaternion = makeCameraFacingQuaternion(roll.result, new THREE.Vector3(0.5, 0.72, -0.02));
+      }
       const eased = 1 - Math.pow(1 - ((progress - 0.73) / 0.27), 4);
-      die.quaternion.copy(roll.settleQuaternion).slerp(targetQuaternions.get(roll.result)!, eased);
+      die.quaternion.copy(roll.settleQuaternion).slerp(roll.targetQuaternion!, eased);
     }
 
     if (progress >= 1) {
       die.position.set(0.5, 0.72, -0.02);
-      die.quaternion.copy(targetQuaternions.get(roll.result)!);
+      die.quaternion.copy(makeCameraFacingQuaternion(roll.result, die.position));
       finished.current = true;
       state.current = null;
       setVisibleResult(roll.result);
-      window.setTimeout(() => setFlying(true), 420);
+      window.setTimeout(() => setFlying(true), 520);
       window.setTimeout(() => {
         setRolling(false);
         onResult(roll.result);
-      }, 1250);
+      }, 1350);
     }
   });
 
@@ -212,7 +214,7 @@ export default function Dice3D({ disabled = false, onResult }: Dice3DProps) {
 
       <div className={styles.instruction} aria-live="polite">
         <b>{rolling ? (visibleResult ? `You rolled ${visibleResult}` : "Rolling…") : "Tap the brass die"}</b>
-        <span>{rolling ? "The result will move to the corner" : "Roll 1–6 spaces"}</span>
+        <span>{rolling ? "The rolled face is presented to you" : "Roll 1–6 spaces"}</span>
       </div>
     </div>
   );
