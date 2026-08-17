@@ -1,141 +1,28 @@
 "use client";
-
-import { useMemo, useState } from "react";
-import Dice3D, { DiceResultIcon } from "./Dice3D";
-import { componentOrder, componentRecipes, reachableSites, victorianSites, type ComponentKey, type ResourceKey } from "./victorianGame";
+import {useMemo,useState} from "react";
+import Dice3D,{DiceResultIcon} from "./Dice3D";
+import {categories,questions,type Question} from "./gameData";
+import {componentOrder,componentRecipes,reachableSites,victorianSites,type ComponentKey,type ResourceKey} from "./victorianGame";
 import styles from "./VictorianBoard.module.css";
 
-type Player = {
-  name: string;
-  site: number;
-  resources: Record<ResourceKey, number>;
-  components: ComponentKey[];
-};
+type Player={name:string;site:number;resources:Record<ResourceKey,number>;components:ComponentKey[]};
+type Props={names:[string,string];onExit:()=>void};
+type Challenge={kind:"location"|"build";question:Question;siteId?:number;component?:ComponentKey;round:number;correct:number};
+const empty=():Record<ResourceKey,number>=>({coal:0,iron:0,knowledge:0,capital:0});
+const symbols:Record<string,string>={start:"⚒",coal:"◆",iron:"▰",engineering:"⚙",university:"▤",port:"£",railway:"●",event:"!",exhibition:"★"};
 
-type Props = { names: [string, string]; onExit: () => void };
-
-const emptyResources = (): Record<ResourceKey, number> => ({ coal: 0, iron: 0, knowledge: 0, capital: 0 });
-const symbols: Record<string, string> = { start: "⚒", coal: "◆", iron: "⚙", engineering: "⚒", university: "▤", port: "⚓", railway: "♜", event: "!", exhibition: "★" };
-
-export default function VictorianBoard({ names, onExit }: Props) {
-  const [players, setPlayers] = useState<Player[]>([
-    { name: names[0] || "Player 1", site: 0, resources: emptyResources(), components: [] },
-    { name: names[1] || "Player 2", site: 0, resources: emptyResources(), components: [] },
-  ]);
-  const [active, setActive] = useState(0);
-  const [roll, setRoll] = useState<number | null>(null);
-  const [targets, setTargets] = useState<number[]>([]);
-  const [message, setMessage] = useState("Roll the die to begin your expedition.");
-  const [winner, setWinner] = useState<string | null>(null);
-  const player = players[active];
-  const locomotiveReady = player.components.length === componentOrder.length;
-
-  const canBuild = useMemo(() => componentOrder.filter((key) => {
-    if (player.components.includes(key)) return false;
-    const cost = componentRecipes[key].cost;
-    return Object.entries(cost).every(([resource, amount]) => player.resources[resource as ResourceKey] >= (amount ?? 0));
-  }), [player]);
-
-  function finishRoll(value: number) {
-    setRoll(value);
-    setTargets(reachableSites(player.site, value));
-    setMessage(`You rolled ${value}. Choose a highlighted railway destination.`);
-  }
-
-  function moveTo(siteId: number) {
-    if (!targets.includes(siteId)) return;
-    const site = victorianSites[siteId];
-    const next = players.map((p) => ({ ...p, resources: { ...p.resources }, components: [...p.components] }));
-    const moving = next[active];
-    moving.site = siteId;
-
-    if (site.kind === "exhibition") {
-      if (moving.components.length === componentOrder.length) {
-        setPlayers(next); setWinner(moving.name); setMessage(`${moving.name} arrives at Crystal Palace with a complete locomotive!`); return;
-      }
-      setMessage("Crystal Palace is magnificent — but your locomotive is not complete. Back to the works!");
-    } else if (site.kind === "event") {
-      moving.resources.capital += 1;
-      setMessage(`${site.name}: your investors rally. Gain 1 capital.`);
-    } else if (site.reward) {
-      Object.entries(site.reward).forEach(([key, amount]) => { moving.resources[key as ResourceKey] += amount ?? 0; });
-      const rewardText = Object.entries(site.reward).map(([key, amount]) => `${amount} ${key}`).join(" + ");
-      setMessage(`Success at ${site.name}. Gain ${rewardText}.`);
-    } else {
-      setMessage(`You arrive at ${site.name}.`);
-    }
-
-    setPlayers(next);
-    setTargets([]);
-  }
-
-  function build(key: ComponentKey) {
-    if (!canBuild.includes(key)) return;
-    const next = players.map((p) => ({ ...p, resources: { ...p.resources }, components: [...p.components] }));
-    const builder = next[active];
-    Object.entries(componentRecipes[key].cost).forEach(([resource, amount]) => { builder.resources[resource as ResourceKey] -= amount ?? 0; });
-    builder.components.push(key);
-    setPlayers(next);
-    setMessage(`${componentRecipes[key].name} completed in the workshop. ${builder.components.length}/6 locomotive components built.`);
-  }
-
-  function endTurn() {
-    if (winner) return;
-    setActive((a) => (a + 1) % 2);
-    setRoll(null); setTargets([]); setMessage("Roll the die to continue the race to the Great Exhibition.");
-  }
-
-  return (
-    <main className={styles.page}>
-      <header className={styles.header}>
-        <div className={styles.turnPlaque}><b>{player.name}</b><span>YOUR TURN</span></div>
-        <div className={styles.title}><span>1851</span><h1>THE GREAT EXHIBITION</h1><p>Build Your Locomotive • Race to London</p></div>
-        <button onClick={onExit}>EXIT</button>
-      </header>
-
-      {roll !== null && <DiceResultIcon value={roll} />}
-
-      <section className={styles.mapWrap}>
-        <div className={styles.mapArt} aria-hidden="true"><div className={styles.scotland}>SCOTLAND</div><div className={styles.england}>ENGLAND</div><div className={styles.wales}>WALES</div><div className={styles.sea}>NORTH SEA</div></div>
-        <svg className={styles.rails} viewBox="0 0 100 100" preserveAspectRatio="none">
-          {victorianSites.flatMap((site) => site.links.filter((id) => id > site.id).map((id) => {
-            const other = victorianSites[id];
-            return <line key={`${site.id}-${id}`} x1={site.x} y1={site.y} x2={other.x} y2={other.y} />;
-          }))}
-        </svg>
-
-        {victorianSites.map((site) => (
-          <button key={site.id} className={`${styles.site} ${styles[site.kind]} ${targets.includes(site.id) ? styles.target : ""}`} style={{ left: `${site.x}%`, top: `${site.y}%` }} disabled={!targets.includes(site.id)} onClick={() => moveTo(site.id)}>
-            <i>{symbols[site.kind]}</i><span>{site.shortName}</span>
-          </button>
-        ))}
-
-        {players.map((p, index) => {
-          const site = victorianSites[p.site];
-          return <div key={index} className={`${styles.pawn} ${index === 1 ? styles.pawnTwo : ""}`} style={{ left: `${site.x}%`, top: `${site.y}%` }}>{index + 1}</div>;
-        })}
-
-        {roll === null && !winner && <Dice3D onResult={finishRoll} />}
-
-        <aside className={styles.palace}><span>1851</span><div className={styles.palaceDrawing}>♜</div><b>CRYSTAL PALACE</b><small>LONDON</small></aside>
-      </section>
-
-      <section className={styles.workshop}>
-        <div className={styles.resources}>
-          <b>RESOURCES</b>
-          <span>◆ Coal <strong>{player.resources.coal}</strong></span><span>⚙ Iron <strong>{player.resources.iron}</strong></span><span>▤ Knowledge <strong>{player.resources.knowledge}</strong></span><span>£ Capital <strong>{player.resources.capital}</strong></span>
-        </div>
-        <div className={styles.buildArea}>
-          <div className={styles.workshopTitle}>THE WORKSHOP <span>Build Your Locomotive</span></div>
-          <div className={styles.parts}>{componentOrder.map((key) => {
-            const built = player.components.includes(key); const available = canBuild.includes(key); const recipe = componentRecipes[key];
-            return <button key={key} className={`${styles.part} ${built ? styles.built : ""} ${available ? styles.available : ""}`} onClick={() => build(key)} disabled={!available || built}><div className={styles.partArt}>{key === "wheels" ? "◉◉" : key === "pistons" ? "╱╲" : key === "cab" ? "▣" : key === "tender" ? "▰" : key === "firebox" ? "▧" : "◒"}</div><b>{recipe.name}</b><small>{built ? "BUILT" : Object.entries(recipe.cost).map(([r,a]) => `${a} ${r}`).join(" • ")}</small></button>;
-          })}</div>
-        </div>
-      </section>
-
-      <footer className={styles.footer}><p>{message}</p><div><span>{locomotiveReady ? "✓ Locomotive complete — reach Crystal Palace!" : `${player.components.length}/6 components built`}</span>{roll !== null && targets.length === 0 && !winner && <button onClick={endTurn}>END TURN →</button>}</div></footer>
-      {winner && <div className={styles.win}><span>THE GREAT EXHIBITION • 1851</span><h2>{winner} wins!</h2><p>The locomotive steams beneath the glass roof of Crystal Palace.</p><button onClick={onExit}>Return to worlds</button></div>}
-    </main>
-  );
-}
+export default function VictorianBoard({names,onExit}:Props){
+ const [players,setPlayers]=useState<Player[]>([{name:names[0]||"Player 1",site:0,resources:empty(),components:[]},{name:names[1]||"Player 2",site:0,resources:empty(),components:[]}]);
+ const [active,setActive]=useState(0);const [roll,setRoll]=useState<number|null>(null);const [targets,setTargets]=useState<number[]>([]);const [message,setMessage]=useState("Roll the die. Correct answers earn the reward printed on the space.");const [challenge,setChallenge]=useState<Challenge|null>(null);const [answer,setAnswer]=useState("");const [reveal,setReveal]=useState<null|boolean>(null);const [winner,setWinner]=useState<string|null>(null);
+ const player=players[active];const ready=player.components.length===6;
+ const canBuild=useMemo(()=>componentOrder.filter(k=>!player.components.includes(k)&&Object.entries(componentRecipes[k].cost).every(([r,a])=>player.resources[r as ResourceKey]>=(a??0))),[player]);
+ const randomQuestion=()=>questions[Math.floor(Math.random()*questions.length)];
+ const normal=(s:string)=>s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]/g,"");
+ function finishRoll(v:number){setRoll(v);setTargets(reachableSites(player.site,v));setMessage(`Rolled ${v}. Choose one highlighted destination.`)}
+ function moveTo(id:number){if(!targets.includes(id))return;const next=players.map(p=>({...p,resources:{...p.resources},components:[...p.components]}));next[active].site=id;setPlayers(next);setTargets([]);const site=victorianSites[id];if(site.kind==="exhibition"){if(ready){setWinner(player.name);return;}setMessage("You cannot enter the Exhibition until your locomotive is complete.");return;}if(site.kind==="engineering"){setMessage("Engineering Works: build any affordable component, or end your turn.");return;}if(site.kind==="event"){next[active].resources.capital+=1;setPlayers(next);setMessage("Railway Mania! Gain 1 Capital. Event cards will replace this temporary effect later.");return;}setChallenge({kind:"location",question:randomQuestion(),siteId:id,round:1,correct:0});setAnswer("");setReveal(null);}
+ function beginBuild(k:ComponentKey){if(!canBuild.includes(k))return;const recipe=componentRecipes[k];setChallenge({kind:"build",question:randomQuestion(),component:k,round:1,correct:0});setAnswer("");setReveal(null);setMessage(`${recipe.name}: pass ${recipe.needed} of ${recipe.questions} construction questions.`)}
+ function judge(){if(!challenge)return;const q=challenge.question;const accepted=[q.answer,...(q.alternatives??[])].map(normal);const ok=accepted.some(a=>normal(answer)===a||normal(answer).includes(a)||a.includes(normal(answer)));setReveal(ok);}
+ function continueChallenge(){if(!challenge||reveal===null)return;const correct=challenge.correct+(reveal?1:0);if(challenge.kind==="location"){const site=victorianSites[challenge.siteId!];if(reveal&&site.reward){const next=players.map(p=>({...p,resources:{...p.resources},components:[...p.components]}));Object.entries(site.reward).forEach(([r,a])=>next[active].resources[r as ResourceKey]+=a??0);setPlayers(next);setMessage(`Correct — ${site.name} pays its reward.`);}else setMessage("Incorrect — no resource reward from this stop.");setChallenge(null);return;}
+ const key=challenge.component!;const recipe=componentRecipes[key];if(challenge.round<recipe.questions){setChallenge({...challenge,question:randomQuestion(),round:challenge.round+1,correct});setAnswer("");setReveal(null);return;}if(correct>=recipe.needed){const next=players.map(p=>({...p,resources:{...p.resources},components:[...p.components]}));Object.entries(recipe.cost).forEach(([r,a])=>next[active].resources[r as ResourceKey]-=a??0);next[active].components.push(key);setPlayers(next);setMessage(`${recipe.name} built successfully and fitted to your locomotive.`);}else setMessage(`${recipe.name} construction failed. Your resources are safe; try again at an Engineering Works.`);setChallenge(null);}
+ function endTurn(){setActive(a=>(a+1)%2);setRoll(null);setTargets([]);setChallenge(null);setMessage("Roll the die. Correct answers earn the reward printed on the space.");}
+ return <main className={styles.page}><header className={styles.header}><div className={styles.turnPlaque}><b>{player.name}</b><span>YOUR TURN</span></div><div className={styles.title}><span>1851</span><h1>THE GREAT EXHIBITION</h1><p>Gather • Build • Race to London</p></div><button onClick={onExit}>EXIT</button></header>{roll!==null&&<DiceResultIcon value={roll}/>}<section className={styles.mapWrap}><div className={styles.scene} aria-hidden="true"><div className={styles.hills}/><div className={styles.factory}>▥ ▥ ♨</div><div className={styles.bridge}/><div className={styles.clouds}>☁　☁</div></div><svg className={styles.rails} viewBox="0 0 100 100" preserveAspectRatio="none">{victorianSites.flatMap(s=>s.links.filter(id=>id>s.id).map(id=>{const o=victorianSites[id];return <line key={`${s.id}-${id}`} x1={s.x} y1={s.y} x2={o.x} y2={o.y}/>;}))}</svg>{victorianSites.map(s=><button key={s.id} className={`${styles.site} ${styles[s.kind]} ${targets.includes(s.id)?styles.target:""}`} style={{left:`${s.x}%`,top:`${s.y}%`}} disabled={!targets.includes(s.id)} onClick={()=>moveTo(s.id)}><i>{symbols[s.kind]}</i><span>{s.shortName}</span></button>)}{players.map((p,i)=>{const s=victorianSites[p.site];return <div key={i} className={`${styles.pawn} ${i?styles.pawnTwo:""}`} style={{left:`${s.x}%`,top:`${s.y}%`}}>{i+1}</div>})}{roll===null&&!winner&&<Dice3D onResult={finishRoll}/>}<aside className={styles.palace}><span>1851</span><div className={styles.palaceDrawing}>♜</div><b>CRYSTAL PALACE</b><small>FINISH</small></aside></section><section className={styles.workshop}><div className={styles.resources}><b>RESOURCES</b><span>◆ Coal <strong>{player.resources.coal}</strong></span><span>▰ Iron <strong>{player.resources.iron}</strong></span><span>▤ Knowledge <strong>{player.resources.knowledge}</strong></span><span>£ Capital <strong>{player.resources.capital}</strong></span></div><div className={styles.buildArea}><div className={styles.workshopTitle}>YOUR LOCOMOTIVE <span>{victorianSites[player.site].kind==="engineering"?"Engineering Works open":"Build only at an Engineering Works"}</span></div><div className={styles.parts}>{componentOrder.map(k=>{const built=player.components.includes(k),available=canBuild.includes(k)&&victorianSites[player.site].kind==="engineering",r=componentRecipes[k];return <button key={k} className={`${styles.part} ${built?styles.built:""} ${available?styles.available:""}`} disabled={!available||built} onClick={()=>beginBuild(k)}><div className={styles.partArt}>{k==="wheels"?"◉◉":k==="pistons"?"╱╲":k==="cab"?"▣":k==="tender"?"▰":k==="firebox"?"▧":"◒"}</div><b>{r.name}</b><small>{built?"✓ COMPLETED":`${Object.entries(r.cost).map(([x,a])=>`${a} ${x}`).join(" • ")} | ${r.needed}/${r.questions} quiz`}</small></button>})}</div></div></section><footer className={styles.footer}><p>{message}</p><div><span>{ready?"✓ ENGINE COMPLETE — HEAD FOR LONDON":`${player.components.length}/6 components complete`}</span>{roll!==null&&!challenge&&!winner&&<button onClick={endTurn}>END TURN →</button>}</div></footer>{challenge&&<div className={styles.challenge}><article><span className={styles.challengeType}>{challenge.kind==="build"?`ENGINEERING CHALLENGE • ${componentRecipes[challenge.component!].name}`:`${victorianSites[challenge.siteId!].shortName} • RESOURCE QUESTION`}</span><div className={styles.category}>{categories[challenge.question.category].name} • {challenge.kind==="build"?`Question ${challenge.round}/${componentRecipes[challenge.component!].questions}`:"Answer correctly to collect the reward"}</div><h2>{challenge.question.question}</h2>{reveal===null?<><input value={answer} onChange={e=>setAnswer(e.target.value)} placeholder="Type or speak answer…"/><button onClick={judge}>LOCK ANSWER</button></>:<><div className={reveal?styles.correct:styles.wrong}>{reveal?"✓ CORRECT":"× NOT QUITE"}</div><p>The answer is <b>{challenge.question.answer}</b>.</p><button onClick={continueChallenge}>CONTINUE →</button></>}</article></div>}{winner&&<div className={styles.win}><span>THE GREAT EXHIBITION • 1851</span><h2>{winner} wins!</h2><p>Your completed locomotive arrives beneath the glass roof of Crystal Palace.</p><button onClick={onExit}>RETURN TO WORLDS</button></div>}</main>}
