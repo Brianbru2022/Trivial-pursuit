@@ -1,0 +1,2 @@
+[data-victorian-art="true"]{background-image:linear-gradient(rgba(15,22,16,.03),rgba(15,22,16,.08)),url('/themes/victorian/board-bg.jpg')!important;background-size:cover!important;background-position:center!important;background-repeat:no-repeat!important}
+[data-victorian-art="true"]::before,[data-victorian-art="true"]::after{display:none!important}
