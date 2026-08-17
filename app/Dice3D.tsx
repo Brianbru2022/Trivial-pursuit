@@ -38,8 +38,8 @@ const FACE_ROTATIONS: Record<number, [number, number, number]> = {
 function Pip({ position, rotation = [0, 0, 0] }: { position: [number, number, number]; rotation?: [number, number, number] }) {
   return (
     <mesh position={position} rotation={rotation} castShadow>
-      <cylinderGeometry args={[0.14, 0.14, 0.05, 32]} />
-      <meshStandardMaterial color="#0e0a06" roughness={0.42} metalness={0.03} />
+      <cylinderGeometry args={[0.105, 0.105, 0.042, 28]} />
+      <meshStandardMaterial color="#0b0805" roughness={0.4} metalness={0.02} />
     </mesh>
   );
 }
@@ -48,15 +48,15 @@ function FacePips({ face, value }: { face: "+y" | "-y" | "+x" | "-x" | "+z" | "-
   return (
     <>
       {PIP_LAYOUTS[value].map(([a, b], index) => {
-        const scale = 1.08;
+        const scale = 0.92;
         const x = a * scale;
         const y = b * scale;
-        if (face === "+y") return <Pip key={index} position={[x, 0.917, y]} />;
-        if (face === "-y") return <Pip key={index} position={[x, -0.917, -y]} rotation={[Math.PI, 0, 0]} />;
-        if (face === "+x") return <Pip key={index} position={[0.917, x, -y]} rotation={[0, 0, -Math.PI / 2]} />;
-        if (face === "-x") return <Pip key={index} position={[-0.917, x, y]} rotation={[0, 0, Math.PI / 2]} />;
-        if (face === "+z") return <Pip key={index} position={[x, y, 0.917]} rotation={[Math.PI / 2, 0, 0]} />;
-        return <Pip key={index} position={[-x, y, -0.917]} rotation={[-Math.PI / 2, 0, 0]} />;
+        if (face === "+y") return <Pip key={index} position={[x, 0.662, y]} />;
+        if (face === "-y") return <Pip key={index} position={[x, -0.662, -y]} rotation={[Math.PI, 0, 0]} />;
+        if (face === "+x") return <Pip key={index} position={[0.662, x, -y]} rotation={[0, 0, -Math.PI / 2]} />;
+        if (face === "-x") return <Pip key={index} position={[-0.662, x, y]} rotation={[0, 0, Math.PI / 2]} />;
+        if (face === "+z") return <Pip key={index} position={[x, y, 0.662]} rotation={[Math.PI / 2, 0, 0]} />;
+        return <Pip key={index} position={[-x, y, -0.662]} rotation={[-Math.PI / 2, 0, 0]} />;
       })}
     </>
   );
@@ -64,15 +64,15 @@ function FacePips({ face, value }: { face: "+y" | "-y" | "+x" | "-x" | "+z" | "-
 
 function CameraRig() {
   const { camera } = useThree();
-
-  useFrame(() => {
-    camera.lookAt(0, 0.8, 0);
-  });
-
+  useFrame(() => camera.lookAt(0, 0.55, 0));
   return null;
 }
 
-function BrassDie({ disabled, onResult, rolling, setRolling }: Dice3DProps & { rolling: boolean; setRolling: (value: boolean) => void }) {
+function BrassDie({ disabled, onResult, rolling, setRolling, setVisibleResult }: Dice3DProps & {
+  rolling: boolean;
+  setRolling: (value: boolean) => void;
+  setVisibleResult: (value: number | null) => void;
+}) {
   const group = useRef<THREE.Group>(null);
   const state = useRef<RollState | null>(null);
   const finished = useRef(false);
@@ -89,6 +89,7 @@ function BrassDie({ disabled, onResult, rolling, setRolling }: Dice3DProps & { r
   function beginRoll() {
     if (disabled || rolling || !group.current) return;
     const result = Math.floor(Math.random() * 6) + 1;
+    setVisibleResult(null);
     state.current = { startedAt: performance.now(), result, settleQuaternion: null };
     finished.current = false;
     setRolling(true);
@@ -101,48 +102,49 @@ function BrassDie({ disabled, onResult, rolling, setRolling }: Dice3DProps & { r
     if (!die || !roll || finished.current) return;
 
     const elapsed = (performance.now() - roll.startedAt) / 1000;
-    const progress = Math.min(elapsed / 2.15, 1);
-    const travel = 1 - Math.pow(1 - Math.min(progress / 0.8, 1), 3);
+    const progress = Math.min(elapsed / 1.9, 1);
+    const travel = 1 - Math.pow(1 - Math.min(progress / 0.79, 1), 3);
 
-    die.position.x = THREE.MathUtils.lerp(-2.8, 1.0, travel);
-    const mainArc = Math.sin(Math.min(progress / 0.77, 1) * Math.PI) * 1.9;
-    const settleBounce = progress > 0.72 ? Math.abs(Math.sin((progress - 0.72) * 26)) * (1 - progress) * 1.25 : 0;
-    die.position.y = 1.0 + mainArc + settleBounce;
-    die.position.z = THREE.MathUtils.lerp(0.45, -0.1, travel);
+    die.position.x = THREE.MathUtils.lerp(-1.55, 0.6, travel);
+    die.position.z = THREE.MathUtils.lerp(0.4, -0.05, travel);
+    const mainArc = Math.sin(Math.min(progress / 0.76, 1) * Math.PI) * 1.35;
+    const settleBounce = progress > 0.72 ? Math.abs(Math.sin((progress - 0.72) * 25)) * (1 - progress) * 0.8 : 0;
+    die.position.y = 0.72 + mainArc + settleBounce;
 
-    if (progress < 0.74) {
-      die.rotation.x = progress * Math.PI * 10.2 + 0.35;
-      die.rotation.y = progress * Math.PI * 8.0 + 0.7;
-      die.rotation.z = progress * Math.PI * 8.8 - 0.3;
+    if (progress < 0.73) {
+      die.rotation.x = progress * Math.PI * 9 + 0.25;
+      die.rotation.y = progress * Math.PI * 7 + 0.45;
+      die.rotation.z = progress * Math.PI * 8 - 0.2;
     } else {
       if (!roll.settleQuaternion) roll.settleQuaternion = die.quaternion.clone();
-      const eased = 1 - Math.pow(1 - ((progress - 0.74) / 0.26), 4);
+      const eased = 1 - Math.pow(1 - ((progress - 0.73) / 0.27), 4);
       die.quaternion.copy(roll.settleQuaternion).slerp(targetQuaternions.get(roll.result)!, eased);
     }
 
     if (progress >= 1) {
-      die.position.set(1.0, 1.0, -0.1);
+      die.position.set(0.6, 0.72, -0.05);
       die.quaternion.copy(targetQuaternions.get(roll.result)!);
       finished.current = true;
       state.current = null;
+      setVisibleResult(roll.result);
       window.setTimeout(() => {
         setRolling(false);
         onResult(roll.result);
-      }, 360);
+      }, 900);
     }
   });
 
   return (
     <group
       ref={group}
-      position={[-2.8, 1.0, 0.45]}
-      rotation={[0.35, 0.7, -0.3]}
+      position={[-1.55, 0.72, 0.4]}
+      rotation={[0.25, 0.45, -0.2]}
       onClick={(event) => { event.stopPropagation(); beginRoll(); }}
       onPointerOver={() => { if (!disabled && !rolling) gl.domElement.style.cursor = "pointer"; }}
       onPointerOut={() => { gl.domElement.style.cursor = "default"; }}
     >
-      <RoundedBox args={[1.8, 1.8, 1.8]} radius={0.22} smoothness={7} castShadow receiveShadow>
-        <meshPhysicalMaterial color="#c18c38" roughness={0.22} metalness={0.72} clearcoat={0.46} clearcoatRoughness={0.2} />
+      <RoundedBox args={[1.28, 1.28, 1.28]} radius={0.16} smoothness={6} castShadow receiveShadow>
+        <meshPhysicalMaterial color="#bd8733" roughness={0.25} metalness={0.68} clearcoat={0.35} clearcoatRoughness={0.22} />
       </RoundedBox>
       <FacePips face="+y" value={1} />
       <FacePips face="-y" value={6} />
@@ -156,20 +158,35 @@ function BrassDie({ disabled, onResult, rolling, setRolling }: Dice3DProps & { r
 
 export default function Dice3D({ disabled = false, onResult }: Dice3DProps) {
   const [rolling, setRolling] = useState(false);
+  const [visibleResult, setVisibleResult] = useState<number | null>(null);
 
   return (
     <div className={`${styles.root} ${rolling ? styles.rolling : ""}`}>
-      <Canvas shadows dpr={[1, 1.75]} camera={{ position: [0, 6.1, 8.4], fov: 42 }} gl={{ antialias: true, alpha: true }}>
+      <Canvas shadows dpr={[1, 1.6]} camera={{ position: [0, 5.6, 7.8], fov: 38 }} gl={{ antialias: true, alpha: true }}>
         <CameraRig />
-        <ambientLight intensity={0.9} />
-        <directionalLight position={[-4, 8, 5]} intensity={3.6} castShadow shadow-mapSize-width={1024} shadow-mapSize-height={1024} />
-        <pointLight position={[4, 4, 4]} intensity={18} color="#e2b45d" distance={12} />
-        <BrassDie disabled={disabled} onResult={onResult} rolling={rolling} setRolling={setRolling} />
-        <ContactShadows position={[0, 0.055, 0]} opacity={0.52} scale={11} blur={2.6} far={6} />
+        <ambientLight intensity={0.92} />
+        <directionalLight position={[-4, 8, 5]} intensity={3.2} castShadow shadow-mapSize-width={1024} shadow-mapSize-height={1024} />
+        <pointLight position={[3, 4, 3]} intensity={14} color="#e0ac55" distance={10} />
+        <BrassDie
+          disabled={disabled}
+          onResult={onResult}
+          rolling={rolling}
+          setRolling={setRolling}
+          setVisibleResult={setVisibleResult}
+        />
+        <ContactShadows position={[0, 0.035, 0]} opacity={0.48} scale={8} blur={2.5} far={5} />
       </Canvas>
+
+      {visibleResult !== null && (
+        <div className={styles.resultBadge} aria-live="assertive">
+          <span>ROLLED</span>
+          <b>{visibleResult}</b>
+        </div>
+      )}
+
       <div className={styles.instruction} aria-live="polite">
-        <b>{rolling ? "Rolling…" : "Tap the brass die"}</b>
-        <span>{rolling ? "Watch the top face as it settles" : "Roll 1–6 spaces"}</span>
+        <b>{rolling ? (visibleResult ? `You rolled ${visibleResult}` : "Rolling…") : "Tap the brass die"}</b>
+        <span>{rolling ? "Result shown when the die settles" : "Roll 1–6 spaces"}</span>
       </div>
     </div>
   );
