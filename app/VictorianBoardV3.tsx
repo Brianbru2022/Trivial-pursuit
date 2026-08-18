@@ -5,7 +5,7 @@ import Dice3D,{DiceResultIcon} from "./Dice3D";
 import VictorianLocomotiveV3 from "./VictorianLocomotiveV3";
 import {categories,questions,type Question} from "./gameData";
 import {componentOrder,componentRecipes,reachableSites,victorianSites,type ComponentKey,type ResourceKey} from "./victorianGame";
-import styles from "./VictorianBoardV3.module.css";
+import styles from "./VictorianBoardV3Styles";
 
 type Player={name:string;site:number;resources:Record<ResourceKey,number>;components:ComponentKey[];rerolls:number};
 type Props={names:[string,string];onExit:()=>void};
