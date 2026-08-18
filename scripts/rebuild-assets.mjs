@@ -17,6 +17,6 @@ function rebuildChunkedAsset(sourceDir, output, minBytes) {
 
 rebuildChunkedAsset(
   path.join(root, 'asset-source', 'victorian', 'board'),
-  path.join(root, 'public', 'themes', 'victorian', 'board-art.webp'),
+  path.join(root, 'public', 'themes', 'victorian', 'board-bg.jpg'),
   45000,
 );
