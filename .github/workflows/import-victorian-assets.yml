@@ -1,0 +1,57 @@
+name: Import Victorian production art
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/import-victorian-assets.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  import-assets:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download generated production sheets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p public/themes/victorian/production
+          curl -L --fail --retry 3 'https://at.adobe.com/WlnWrnjYNNS4hsMA' -o public/themes/victorian/production/locomotive-sheet.png
+          curl -L --fail --retry 3 'https://at.adobe.com/eplWc1D45oQGJpUh' -o public/themes/victorian/production/station-sheet.png
+          curl -L --fail --retry 3 'https://at.adobe.com/xeA261XDHdVuMM84' -o public/themes/victorian/production/resource-sheet.png
+          curl -L --fail --retry 3 'https://at.adobe.com/wxR3lFplAGLYRnwC' -o public/themes/victorian/production/railway-sheet.png
+          for f in public/themes/victorian/production/*.png; do
+            bytes=$(stat -c%s "$f")
+            echo "$f: $bytes bytes"
+            if [ "$bytes" -lt 100000 ]; then
+              echo "Asset is unexpectedly small: $f" >&2
+              exit 1
+            fi
+            sig=$(xxd -p -l 8 "$f")
+            if [ "$sig" != "89504e470d0a1a0a" ]; then
+              echo "Asset is not a valid PNG: $f ($sig)" >&2
+              exit 1
+            fi
+          done
+
+      - name: Commit production assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add public/themes/victorian/production
+          if git diff --cached --quiet; then
+            echo 'No asset changes to commit.'
+            exit 0
+          fi
+          git commit -m 'Add Victorian production art binaries'
+          git push origin HEAD:main
