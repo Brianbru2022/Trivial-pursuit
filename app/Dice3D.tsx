@@ -144,6 +144,7 @@ function BrassDie({ disabled, onResult, rolling, setRolling, setVisibleResult, s
       ref={group}
       position={[-1.35, 0.72, 0.45]}
       rotation={[0.25, 0.45, -0.2]}
+      scale={[0.82, 0.82, 0.82]}
       onClick={(event) => { event.stopPropagation(); beginRoll(); }}
       onPointerOver={() => { if (!disabled && !rolling) gl.domElement.style.cursor = "pointer"; }}
       onPointerOut={() => { gl.domElement.style.cursor = "default"; }}
