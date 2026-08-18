@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import VictorianBoardV8 from "./VictorianBoardV8";
+import VictorianBoardFresh from "./VictorianBoardFresh";
 import { themes, type ThemeId } from "./gameData";
 
 export default function Home() {
@@ -10,7 +10,7 @@ export default function Home() {
   const [names, setNames] = useState<[string, string, string]>(["Player 1", "Player 2", "Player 3"]);
   const theme = themes.find((item) => item.id === themeId) ?? themes[0];
 
-  if (screen === "victorian") return <VictorianBoardV8 names={names} onExit={() => setScreen("setup")} />;
+  if (screen === "victorian") return <VictorianBoardFresh names={names} onExit={() => setScreen("setup")} />;
 
   return (
     <main className="setupPage" style={{ "--accent": theme.accent, "--accent2": theme.accent2, "--surface": theme.surface, "--world": theme.backdrop, "--texture": theme.texture } as React.CSSProperties}>
@@ -32,7 +32,7 @@ export default function Home() {
           <label><span>Player three</span><input value={names[2]} onChange={(e) => setNames([names[0], names[1], e.target.value])} /></label>
         </div>
         <div className="setupFooter">
-          <div><b>{themeId === "victorian" ? "The Great Exhibition" : theme.boardName}</b><span>{themeId === "victorian" ? "Three rival engineers gather resources, build their locomotives and race to Crystal Palace." : "This world's unique game is not built yet."}</span></div>
+          <div><b>{themeId === "victorian" ? "The Great Exhibition" : theme.boardName}</b><span>{themeId === "victorian" ? "Three rival engineers travel a single railway to Crystal Palace, gathering resources and building their locomotives along the way." : "This world's unique game is not built yet."}</span></div>
           <button className="primary" disabled={themeId !== "victorian"} onClick={() => setScreen("victorian")}>{themeId === "victorian" ? "Begin the Great Exhibition" : "Coming soon"} <span>→</span></button>
         </div>
       </section>
