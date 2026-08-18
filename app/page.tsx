@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import VictorianBoardV6 from "./VictorianBoardV6";
+import VictorianBoardV7 from "./VictorianBoardV7";
 import { themes, type ThemeId } from "./gameData";
 
 export default function Home() {
@@ -10,7 +10,7 @@ export default function Home() {
   const [names, setNames] = useState<[string, string]>(["Player 1", "Player 2"]);
   const theme = themes.find((item) => item.id === themeId) ?? themes[0];
 
-  if (screen === "victorian") return <VictorianBoardV6 names={names} onExit={() => setScreen("setup")} />;
+  if (screen === "victorian") return <VictorianBoardV7 names={names} onExit={() => setScreen("setup")} />;
 
   return (
     <main className="setupPage" style={{ "--accent": theme.accent, "--accent2": theme.accent2, "--surface": theme.surface, "--world": theme.backdrop, "--texture": theme.texture } as React.CSSProperties}>
