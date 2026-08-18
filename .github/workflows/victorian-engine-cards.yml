@@ -1,0 +1,80 @@
+name: Victorian engine cards and compact workshop
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/victorian-engine-cards.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply engine-card layout
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          p=Path('app/VictorianBoardV3.tsx')
+          s=p.read_text()
+
+          # Make major destination artwork decisively smaller.
+          s=s.replace('width={s.kind==="exhibition"?104:90}', 'width={s.kind==="exhibition"?90:76}')
+
+          # Replace player header blocks with miniature locomotive cards.
+          old='<header className={styles.top}><div className={styles.player}><span className={styles.avatar}>{player.name[0]}</span><div><small>YOUR TURN</small><b>{player.name}</b></div></div><div className={styles.brand}><small>1851</small><h1>THE GREAT EXHIBITION</h1><p>Gather • Build • Race to London</p></div><div className={`${styles.player} ${styles.playerRight}`}><div><small>WAITING</small><b>{other.name}</b></div><span className={styles.avatar}>{other.name[0]}</span><button onClick={onExit}>EXIT</button></div></header>'
+          new='<header className={styles.top}><EngineCard player={player} active side="left"/><div className={styles.brand}><small>1851</small><h1>THE GREAT EXHIBITION</h1><p>Gather • Build • Race to London</p></div><div className={styles.headerRight}><EngineCard player={other} side="right"/><button className={styles.exitButton} onClick={onExit}>EXIT</button></div></header>'
+          if old not in s and new not in s:
+              raise SystemExit('Header block not found')
+          s=s.replace(old,new)
+
+          # Large locomotive only appears when engineering work is actually happening.
+          old='<div className={styles.loco}>{ready?<div className={styles.finishedLoco}><SpriteCrop src={LOCO_SHEET} crop={finishedLocoCrop} width={670}/><span>READY FOR THE GREAT EXHIBITION</span></div>:<ProgressiveLocomotive completed={player.components}/>}</div>'
+          new='<div className={`${styles.loco} ${atWorks?styles.locoExpanded:styles.locoCompact}`}>{ready?<div className={styles.finishedLoco}><SpriteCrop src={LOCO_SHEET} crop={finishedLocoCrop} width={560}/><span>READY FOR THE GREAT EXHIBITION</span></div>:atWorks?<ProgressiveLocomotive completed={player.components}/>:<CompactWorkshop player={player}/>}</div>'
+          if old not in s and new not in s:
+              raise SystemExit('Locomotive block not found')
+          s=s.replace(old,new)
+
+          marker='function ProgressiveLocomotive({completed}:{completed:ComponentKey[]})'
+          helpers='''function EngineCard({player,active=false,side}:{player:Player;active?:boolean;side:"left"|"right"}){\n return <div className={`${styles.engineCard} ${active?styles.engineCardActive:""} ${side==="right"?styles.engineCardRight:""}`}>\n   <div className={styles.engineCardText}><small>{active?"YOUR TURN":"WAITING"}</small><b>{player.name}</b><span>{player.components.length}/6 BUILT</span></div>\n   <div className={styles.miniEngine}><SpriteCrop src={LOCO_SHEET} crop={finishedLocoCrop} width={118} className={player.components.length===6?styles.miniEngineComplete:styles.miniEngineGhost}/></div>\n   <div className={styles.enginePips}>{componentOrder.map(k=><i key={k} className={player.components.includes(k)?styles.enginePipBuilt:""}/>)}</div>\n </div>;\n}\nfunction CompactWorkshop({player}:{player:Player}){\n return <div className={styles.compactWorkshop}>\n   <div className={styles.compactEngine}><SpriteCrop src={LOCO_SHEET} crop={finishedLocoCrop} width={330} className={styles.compactEngineGhost}/></div>\n   <div className={styles.compactCopy}><strong>{player.components.length?`${player.components.length} of 6 components complete`:"Your locomotive awaits"}</strong><span>{player.components.length?"Reach an Engineering Works to fit the next component.":"Gather resources, then visit an Engineering Works to begin construction."}</span></div>\n </div>;\n}\n'''
+          if 'function EngineCard(' not in s:
+              if marker not in s: raise SystemExit('ProgressiveLocomotive marker not found')
+              s=s.replace(marker,helpers+marker)
+          p.write_text(s)
+
+          # More decisive board-game geometry.
+          g=Path('app/victorianGame.ts')
+          gs=g.read_text()
+          coords={
+            'x:18,y:30':'x:20,y:31','x:29,y:20':'x:31,y:20','x:41,y:15':'x:42,y:15','x:54,y:14':'x:54,y:14','x:67,y:18':'x:66,y:18','x:78,y:27':'x:77,y:28','x:84,y:39':'x:82,y:40','x:84,y:54':'x:82,y:55','x:75,y:68':'x:73,y:68','x:62,y:77':'x:61,y:76','x:49,y:80':'x:49,y:78','x:36,y:77':'x:37,y:76','x:24,y:68':'x:26,y:68','x:16,y:55':'x:18,y:55','x:15,y:43':'x:17,y:43','x:16,y:35':'x:18,y:35','x:94,y:54':'x:92,y:55'
+          }
+          for a,b in coords.items(): gs=gs.replace(a,b)
+          g.write_text(gs)
+
+          # Directly append the stronger presentation rules to production CSS.
+          c=Path('app/VictorianBoardV3Production.module.css')
+          css=c.read_text()
+          css += r'''
+
+/* 1851 board-game composition v2 */
+.page{grid-template-rows:58px minmax(0,1fr) 220px!important}.top{grid-template-columns:250px minmax(440px,1fr) 300px!important;padding:3px 12px!important}.brand h1{font-size:clamp(23px,2.2vw,31px)!important}.brand p{display:none}.headerRight{display:flex;align-items:center;justify-content:flex-end;gap:8px;min-width:0}.exitButton{padding:7px 10px;border:1px solid #a97932;border-radius:6px;background:#0c2c23;color:#efd18d;font-family:inherit;letter-spacing:.08em}.engineCard{height:48px;display:grid;grid-template-columns:minmax(90px,1fr) 118px;grid-template-rows:1fr 6px;align-items:center;gap:1px 8px;padding:2px 7px;border:1px solid #80602c;border-radius:8px;background:linear-gradient(180deg,rgba(24,58,46,.92),rgba(8,25,20,.95));box-shadow:inset 0 0 0 1px rgba(231,190,101,.12),0 3px 8px rgba(0,0,0,.35);overflow:hidden}.engineCardRight{grid-template-columns:minmax(80px,1fr) 108px}.engineCardActive{border-color:#c99645;box-shadow:inset 0 0 0 1px rgba(255,221,141,.24),0 0 12px rgba(204,145,52,.18)}.engineCardText{display:grid;align-content:center;min-width:0}.engineCardText small{font-size:6px;letter-spacing:.17em;color:#cda65e}.engineCardText b{font-size:13px;color:#f0d49a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.engineCardText span{font-family:system-ui;font-size:6px;letter-spacing:.08em;color:#ac9b78}.miniEngine{height:36px;display:flex;align-items:center;justify-content:center;overflow:hidden}.miniEngineGhost{filter:sepia(.38) saturate(.55) brightness(.88);opacity:.72}.miniEngineComplete{filter:drop-shadow(0 2px 3px rgba(0,0,0,.4))}.enginePips{grid-column:1/-1;display:flex;gap:4px;align-items:center}.enginePips i{width:12px;height:3px;border-radius:3px;background:#594931;box-shadow:inset 0 0 0 1px #9f783b55}.enginePips i.enginePipBuilt{background:#c5943e;box-shadow:0 0 5px #d9a84b66}.boardShell{margin:4px 10px 0!important;border-width:5px!important}.railShadow{stroke-width:7!important}.railSteel{stroke-width:3.8!important}.railSleepers{stroke-width:1.7!important;stroke-dasharray:.8 2.1!important}.illustratedStation .stationSprite{transform:scale(.72)!important}.exhibition .stationSprite{transform:scale(.82)!important}.medallion{width:31px!important;height:31px!important;border-width:2px!important}.medallion svg{width:15px!important;height:15px!important}.pawn{width:29px!important;height:29px!important;border-width:2px!important}.console{grid-template-columns:160px minmax(0,1fr) 150px!important;gap:6px!important;padding:5px 8px 8px!important}.resources,.side{padding:6px!important}.resource{grid-template-columns:35px 1fr auto!important;padding:3px 1px!important}.resourceSprite{transform:scale(.88)!important}.resource strong{font-size:17px!important}.side h2,.resources h2{font-size:11px!important}.side p{font-size:8px!important}.objective{padding:6px!important;font-size:7px!important;margin:7px 0 auto!important}.side button{padding:8px 5px!important;font-size:9px}.workshopHead{padding:4px 10px!important}.workshopHead small{display:none}.workshopHead h2{font-size:14px!important}.loco{height:103px!important;padding:0 8px!important}.locoExpanded{height:103px!important}.locoCompact{height:103px!important}.compactWorkshop{height:100%;display:flex;align-items:center;justify-content:center;gap:18px;padding:3px 20px;background:radial-gradient(ellipse at 42% 70%,#f3e4bc 0,#ddc99b 64%,#b79968 100%)}.compactEngine{width:360px;display:flex;align-items:center;justify-content:center;overflow:hidden}.compactEngineGhost{filter:grayscale(.18) sepia(.5) saturate(.55) contrast(.92);opacity:.56}.compactCopy{display:grid;gap:3px;max-width:270px;color:#4c321b}.compactCopy strong{font-size:14px}.compactCopy span{font-family:system-ui;font-size:8px;line-height:1.35}.parts{height:70px;align-items:stretch!important;padding:3px!important}.part{padding:2px!important}.componentSprite{transform:scale(.84)!important;margin-bottom:-2px!important}.part b{font-size:7px!important}.part small,.part em{font-size:4.5px!important}.progressLoco{width:92%!important}.progressLocoBase{opacity:.58!important;filter:grayscale(.1) sepia(.45) saturate(.48) contrast(.9)!important}.boardMotto{display:none}
+@media(max-width:1100px){.page{grid-template-rows:54px minmax(0,1fr) 205px!important}.top{grid-template-columns:215px minmax(330px,1fr) 255px!important}.engineCard{grid-template-columns:minmax(76px,1fr) 95px;height:44px}.miniEngine{transform:scale(.8)}.console{grid-template-columns:135px minmax(0,1fr) 130px!important}.illustratedStation .stationSprite{transform:scale(.62)!important}.exhibition .stationSprite{transform:scale(.7)!important}.medallion{width:27px!important;height:27px!important}.loco{height:92px!important}.parts{height:62px}.compactEngine{width:280px}.compactCopy{max-width:210px}}
+'''
+          c.write_text(css)
+
+          git=Path('.github/workflows/victorian-engine-cards.yml')
+          git.unlink()
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/VictorianBoardV3.tsx app/VictorianBoardV3Production.module.css app/victorianGame.ts
+          git commit -m 'Reframe Victorian board around player engine cards'
+          git push origin HEAD:main
