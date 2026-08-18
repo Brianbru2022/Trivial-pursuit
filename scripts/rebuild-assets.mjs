@@ -5,7 +5,7 @@ const root = process.cwd();
 const jobs = [
   {
     source: path.join(root, 'asset-source', 'victorian', 'board-landscape.b64'),
-    output: path.join(root, 'public', 'themes', 'victorian', 'board-generated.webp'),
+    output: path.join(root, 'public', 'themes', 'victorian', 'board-bg.jpg'),
     minBytes: 40000,
   },
 ];
