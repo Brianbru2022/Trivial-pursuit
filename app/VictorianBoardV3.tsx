@@ -10,6 +10,8 @@ import styles from "./VictorianBoardV3.module.css";
 type Player={name:string;site:number;resources:Record<ResourceKey,number>;components:ComponentKey[];rerolls:number};
 type Props={names:[string,string];onExit:()=>void};
 type Challenge={kind:"location"|"build";question:Question;siteId?:number;component?:ComponentKey;round:number;correct:number};
+type Crop={x:number;y:number;w:number;h:number;sourceW:number;sourceH:number};
+
 const empty=():Record<ResourceKey,number>=>({coal:0,iron:0,knowledge:0,capital:0});
 const events=[
  {title:"Railway Mania",text:"Investors rush into the railway boom. Gain 2 Capital.",apply:(p:Player)=>p.resources.capital+=2},
@@ -17,7 +19,45 @@ const events=[
  {title:"Government Contract",text:"A government order provides 1 Capital and 1 Coal.",apply:(p:Player)=>{p.resources.capital++;p.resources.coal++}},
  {title:"Express Service",text:"Your connections earn a reroll token.",apply:(p:Player)=>p.rerolls++},
 ];
-function normalise(s:string){return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]/g,"")}
+
+const STATION_SHEET="/themes/victorian/production/station-sheet.png";
+const RESOURCE_SHEET="/themes/victorian/production/resource-sheet.png";
+const LOCO_SHEET="/themes/victorian/production/locomotive-sheet.png";
+
+const stationCrops:Record<string,Crop>={
+ WORKSHOP:{x:0,y:0,w:483,h:405,sourceW:1448,sourceH:1086},
+ UNIVERSITY:{x:483,y:0,w:483,h:405,sourceW:1448,sourceH:1086},
+ WORKS:{x:966,y:0,w:482,h:405,sourceW:1448,sourceH:1086},
+ EXHIBITION:{x:0,y:405,w:362,h:400,sourceW:1448,sourceH:1086},
+ DOCKS:{x:362,y:405,w:362,h:400,sourceW:1448,sourceH:1086},
+ "GRAND WORKS":{x:724,y:405,w:362,h:400,sourceW:1448,sourceH:1086},
+ JUNCTION:{x:1086,y:405,w:362,h:400,sourceW:1448,sourceH:1086},
+};
+
+const resourceCrops:Record<string,Crop>={
+ coal:{x:0,y:0,w:290,h:270,sourceW:1448,sourceH:1086},
+ iron:{x:290,y:0,w:290,h:270,sourceW:1448,sourceH:1086},
+ knowledge:{x:580,y:0,w:290,h:270,sourceW:1448,sourceH:1086},
+ capital:{x:870,y:0,w:290,h:270,sourceW:1448,sourceH:1086},
+ reroll:{x:0,y:485,w:290,h:235,sourceW:1448,sourceH:1086},
+};
+
+const componentCrops:Record<ComponentKey,Crop>={
+ boiler:{x:0,y:185,w:395,h:235,sourceW:1672,sourceH:941},
+ wheels:{x:390,y:185,w:295,h:235,sourceW:1672,sourceH:941},
+ pistons:{x:675,y:185,w:285,h:235,sourceW:1672,sourceH:941},
+ firebox:{x:955,y:185,w:230,h:235,sourceW:1672,sourceH:941},
+ cab:{x:1160,y:185,w:235,h:235,sourceW:1672,sourceH:941},
+ tender:{x:1375,y:185,w:297,h:235,sourceW:1672,sourceH:941},
+};
+const finishedLocoCrop:Crop={x:180,y:630,w:1330,h:311,sourceW:1672,sourceH:941};
+
+function SpriteCrop({src,crop,width,className=""}:{src:string;crop:Crop;width:number;className?:string}){
+ const scale=width/crop.w;
+ return <span className={`${styles.spriteCrop} ${className}`} style={{width,height:crop.h*scale}} aria-hidden="true">
+   <img src={src} alt="" draggable={false} style={{width:crop.sourceW*scale,height:crop.sourceH*scale,left:-crop.x*scale,top:-crop.y*scale}}/>
+ </span>;
+}
 
 function Glyph({kind}:{kind:string}){
  const p={fill:"none",stroke:"currentColor",strokeWidth:1.65,strokeLinecap:"round" as const,strokeLinejoin:"round" as const};
@@ -30,6 +70,7 @@ function Glyph({kind}:{kind:string}){
  if(kind==="exhibition")return <svg viewBox="0 0 24 24"><path {...p} d="M4 19h16M6 19V8l6-4 6 4v11M9 19v-7h6v7M7 9h10"/></svg>;
  return <svg viewBox="0 0 24 24"><path {...p} d="M4 12h16M12 4v16M7 7l10 10M17 7L7 17"/><circle {...p} cx="12" cy="12" r="8"/></svg>;
 }
+function normalise(s:string){return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]/g,"")}
 
 export default function VictorianBoardV3({names,onExit}:Props){
  const [players,setPlayers]=useState<Player[]>([{name:names[0]||"Player 1",site:0,resources:empty(),components:[],rerolls:0},{name:names[1]||"Player 2",site:0,resources:empty(),components:[],rerolls:0}]);
@@ -49,14 +90,14 @@ export default function VictorianBoardV3({names,onExit}:Props){
  return <main className={styles.page}>
    <header className={styles.top}><div className={styles.player}><span className={styles.avatar}>{player.name[0]}</span><div><small>YOUR TURN</small><b>{player.name}</b></div></div><div className={styles.brand}><small>1851</small><h1>THE GREAT EXHIBITION</h1><p>Gather • Build • Race to London</p></div><div className={`${styles.player} ${styles.playerRight}`}><div><small>WAITING</small><b>{other.name}</b></div><span className={styles.avatar}>{other.name[0]}</span><button onClick={onExit}>EXIT</button></div></header>
    {roll!==null&&<DiceResultIcon value={roll}/>} 
-   <section className={styles.boardShell}><img src="/themes/victorian/board-bg.jpg" className={styles.art} alt=""/><div className={styles.artWash}/><svg className={styles.track} viewBox="0 0 100 100" preserveAspectRatio="none">{victorianSites.flatMap(s=>s.links.filter(id=>id>s.id).map(id=>{const o=victorianSites[id];return <g key={`${s.id}-${id}`}><line className={styles.railShadow} x1={s.x} y1={s.y} x2={o.x} y2={o.y}/><line className={styles.rail} x1={s.x} y1={s.y} x2={o.x} y2={o.y}/></g>}))}</svg>
-   {victorianSites.map(s=><button key={s.id} title={s.name} className={`${styles.station} ${s.major?styles.major:""} ${targets.includes(s.id)?styles.target:""} ${styles[s.kind]??""}`} style={{left:`${s.x}%`,top:`${s.y}%`}} disabled={!targets.includes(s.id)} onClick={()=>moveTo(s.id)}><span className={styles.medallion}><Glyph kind={s.kind}/></span>{(s.major||targets.includes(s.id))&&<span className={styles.label}>{s.shortName}</span>}</button>)}
+   <section className={styles.boardShell}><img src="/themes/victorian/board-art.webp?v=3" className={styles.art} alt=""/><div className={styles.artWash}/><svg className={styles.track} viewBox="0 0 100 100" preserveAspectRatio="none">{victorianSites.flatMap(s=>s.links.filter(id=>id>s.id).map(id=>{const o=victorianSites[id];return <g key={`${s.id}-${id}`}><line className={styles.railShadow} x1={s.x} y1={s.y} x2={o.x} y2={o.y}/><line className={styles.railSteel} x1={s.x} y1={s.y} x2={o.x} y2={o.y}/><line className={styles.railSleepers} x1={s.x} y1={s.y} x2={o.x} y2={o.y}/></g>}))}</svg>
+   {victorianSites.map(s=>{const crop=s.major?stationCrops[s.shortName]:undefined;return <button key={s.id} title={s.name} className={`${styles.station} ${s.major?styles.major:""} ${crop?styles.illustratedStation:""} ${targets.includes(s.id)?styles.target:""} ${styles[s.kind]??""}`} style={{left:`${s.x}%`,top:`${s.y}%`}} disabled={!targets.includes(s.id)} onClick={()=>moveTo(s.id)}>{crop?<SpriteCrop src={STATION_SHEET} crop={crop} width={s.kind==="exhibition"?112:106} className={styles.stationSprite}/>:<><span className={styles.medallion}><Glyph kind={s.kind}/></span>{targets.includes(s.id)&&<span className={styles.label}>{s.shortName}</span>}</>}</button>})}
    {players.map((p,i)=>{const s=victorianSites[p.site];return <div key={i} className={`${styles.pawn} ${i?styles.blue:""}`} style={{left:`${s.x}%`,top:`${s.y}%`}}><span>{i+1}</span></div>})}{roll===null&&!winner&&<Dice3D onResult={finishRoll}/>}<div className={styles.boardMotto}>INNOVATION • INDUSTRY • OPPORTUNITY</div></section>
-   <section className={styles.console}><aside className={styles.resources}><h2>RESOURCES</h2><Resource kind="coal" label="Coal" value={player.resources.coal}/><Resource kind="iron" label="Iron" value={player.resources.iron}/><Resource kind="university" label="Knowledge" value={player.resources.knowledge}/><Resource kind="port" label="Capital" value={player.resources.capital}/><Resource kind="railway" label="Rerolls" value={player.rerolls}/></aside><section className={styles.workshop}><div className={styles.workshopHead}><div><small>ENGINEERING DRAWING No. 1851</small><h2>YOUR LOCOMOTIVE</h2></div><span>{player.components.length}/6 COMPLETE</span></div><div className={styles.loco}><VictorianLocomotiveV3 completed={player.components}/></div><div className={styles.parts}>{componentOrder.map(k=>{const r=componentRecipes[k],built=player.components.includes(k),available=atWorks&&canBuild.includes(k);return <button key={k} disabled={!available||built} onClick={()=>beginBuild(k)} className={`${styles.part} ${built?styles.built:""} ${available?styles.available:""}`}><b>{r.name}</b><small>{built?"✓ COMPLETED":Object.entries(r.cost).map(([x,a])=>`${a} ${x}`).join(" • ")}</small><em>{r.needed}/{r.questions} challenge</em></button>})}</div></section><aside className={styles.side}><h2>CURRENT OBJECTIVE</h2><p>{message}</p><div className={styles.objective}>{ready?"ENGINE COMPLETE — REACH CRYSTAL PALACE":"BUILD ALL SIX LOCOMOTIVE COMPONENTS"}</div>{roll!==null&&!challenge&&!winner&&<button onClick={pass}>PASS TO {other.name.toUpperCase()}</button>}</aside></section>
+   <section className={styles.console}><aside className={styles.resources}><h2>RESOURCES</h2><Resource art="coal" label="Coal" value={player.resources.coal}/><Resource art="iron" label="Iron" value={player.resources.iron}/><Resource art="knowledge" label="Knowledge" value={player.resources.knowledge}/><Resource art="capital" label="Capital" value={player.resources.capital}/><Resource art="reroll" label="Rerolls" value={player.rerolls}/></aside><section className={styles.workshop}><div className={styles.workshopHead}><div><small>ENGINEERING DRAWING No. 1851</small><h2>YOUR LOCOMOTIVE</h2></div><span>{player.components.length}/6 COMPLETE</span></div><div className={styles.loco}>{ready?<div className={styles.finishedLoco}><SpriteCrop src={LOCO_SHEET} crop={finishedLocoCrop} width={670}/><span>READY FOR THE GREAT EXHIBITION</span></div>:<VictorianLocomotiveV3 completed={player.components}/>}</div><div className={styles.parts}>{componentOrder.map(k=>{const r=componentRecipes[k],built=player.components.includes(k),available=atWorks&&canBuild.includes(k);return <button key={k} disabled={!available||built} onClick={()=>beginBuild(k)} className={`${styles.part} ${built?styles.built:""} ${available?styles.available:""}`}><SpriteCrop src={LOCO_SHEET} crop={componentCrops[k]} width={70} className={styles.componentSprite}/><b>{r.name}</b><small>{built?"✓ COMPLETED":Object.entries(r.cost).map(([x,a])=>`${a} ${x}`).join(" • ")}</small><em>{r.needed}/{r.questions} challenge</em></button>})}</div></section><aside className={styles.side}><h2>CURRENT OBJECTIVE</h2><p>{message}</p><div className={styles.objective}>{ready?"ENGINE COMPLETE — REACH CRYSTAL PALACE":"BUILD ALL SIX LOCOMOTIVE COMPONENTS"}</div>{roll!==null&&!challenge&&!winner&&<button onClick={pass}>PASS TO {other.name.toUpperCase()}</button>}</aside></section>
    {event&&<Modal><small>VICTORIAN EVENT</small><h2>{event.title}</h2><p>{event.text}</p><button onClick={()=>setEvent(null)}>CONTINUE</button></Modal>}
    {challenge&&<Modal wide><small>{challenge.kind==="build"?`ENGINEERING CHALLENGE • ${componentRecipes[challenge.component!].name}`:`${victorianSites[challenge.siteId!].shortName} • RESOURCE QUESTION`}</small><div className={styles.category}>{categories[challenge.question.category].name}{challenge.kind==="build"?` • ${challenge.round}/${componentRecipes[challenge.component!].questions}`:""}</div><h2>{challenge.question.question}</h2>{reveal===null?<><div className={styles.answer}><input value={answer} onChange={e=>setAnswer(e.target.value)} placeholder="Say it or type it…"/><button onClick={listen}>{listening?"LISTENING…":"SPEAK"}</button></div><div className={styles.modalActions}><button onClick={()=>speak(challenge.question)}>HEAR AGAIN</button><button onClick={judge}>LOCK ANSWER</button></div></>:<><div className={reveal?styles.correct:styles.wrong}>{reveal?"✓ CORRECT":"× NOT QUITE"}</div><p>The answer is <b>{challenge.question.answer}</b>.</p><button onClick={continueChallenge}>CONTINUE</button></>}</Modal>}
    {winner&&<Modal><small>THE GREAT EXHIBITION • 1851</small><h2>{winner} wins!</h2><p>Your completed locomotive arrives at Crystal Palace.</p><button onClick={onExit}>RETURN TO WORLDS</button></Modal>}
  </main>
 }
-function Resource({kind,label,value}:{kind:string;label:string;value:number}){return <div className={styles.resource}><span><Glyph kind={kind}/></span><b>{label}</b><strong>{value}</strong></div>}
+function Resource({art,label,value}:{art:string;label:string;value:number}){return <div className={styles.resource}><SpriteCrop src={RESOURCE_SHEET} crop={resourceCrops[art]} width={42} className={styles.resourceSprite}/><b>{label}</b><strong>{value}</strong></div>}
 function Modal({children,wide=false}:{children:React.ReactNode;wide?:boolean}){return <div className={styles.overlay}><article className={wide?styles.wide:""}>{children}</article></div>}
