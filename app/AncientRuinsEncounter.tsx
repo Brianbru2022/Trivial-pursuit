@@ -4,7 +4,7 @@ import { Canvas, useFrame } from "@react-three/fiber";
 import { ContactShadows } from "@react-three/drei";
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import Dice3D, { DiceResultIcon } from "./Dice3D";
+import Dice3D from "./Dice3D";
 import styles from "./AncientRuinsEncounter.module.css";
 
 type PoiId = "gate" | "trench" | "tablet" | "sanctuary";
@@ -82,20 +82,21 @@ export default function AncientRuinsEncounter({ onBack }: Props) {
     setLegalRoutes(new Map());
     setMoving(true);
     setMessage(`Walking to ${BY_ID[id].name}…`);
-    window.setTimeout(() => {
-      setPosition(id);
-      setRoll(null);
-      setMoving(false);
-      const node = BY_ID[id];
-      if (node.poi && !completed.includes(node.poi)) {
-        setSelected(POI_BY_ID[node.poi]);
-        setResult(null);
-        setMessage(`You reached ${node.name}. Resolve this encounter.`);
-      } else {
-        setTurnComplete(true);
-        setMessage(`${node.name}. Movement complete — end the island turn.`);
-      }
-    }, Math.max(900, (path.length - 1) * 520));
+  }
+
+  function finishMove(id: NodeId) {
+    setPosition(id);
+    setRoll(null);
+    setMoving(false);
+    const node = BY_ID[id];
+    if (node.poi && !completed.includes(node.poi)) {
+      setSelected(POI_BY_ID[node.poi]);
+      setResult(null);
+      setMessage(`You reached ${node.name}. Resolve this encounter.`);
+    } else {
+      setTurnComplete(true);
+      setMessage(`${node.name}. Movement complete — end the island turn.`);
+    }
   }
 
   function answer(option: string) {
@@ -122,6 +123,7 @@ export default function AncientRuinsEncounter({ onBack }: Props) {
     setTurnComplete(false);
     setRoll(null);
     setLegalRoutes(new Map());
+    setRoute([position]);
     setMessage(position === "landing" ? "You are at Landing Beach. Roll to explore, or sail back to the world map." : "Roll the die for your next move around Aster Vale.");
   }
 
@@ -141,12 +143,11 @@ export default function AncientRuinsEncounter({ onBack }: Props) {
           <ambientLight intensity={1.05} />
           <hemisphereLight args={["#dcecff", "#4b3a25", 1.3]} />
           <directionalLight castShadow position={[-6, 12, 8]} intensity={3.5} shadow-mapSize-width={2048} shadow-mapSize-height={2048} />
-          <IslandBoard reachable={[...legalRoutes.keys()]} current={position} sanctuaryUnlocked={sanctuaryUnlocked} completed={completed} discovery={discovery} onChoose={chooseDestination} />
-          <ExplorerPawn route={route} />
+          <IslandBoard reachable={[...legalRoutes.keys()]} current={position} sanctuaryUnlocked={sanctuaryUnlocked} completed={completed} discovery={discovery} route={route} onArrive={finishMove} onChoose={chooseDestination} />
           <ContactShadows position={[0, -0.28, 0]} opacity={0.42} scale={14} blur={2.7} far={8} />
         </Canvas>
 
-        {roll !== null && <DiceResultIcon value={roll} />}
+        {roll !== null && <div className={styles.rollResult}>ROLLED <b>{roll}</b></div>}
         <aside className={styles.objective}>
           <small>YOUR EXPEDITION</small>
           <h2>{discovery ? "Discovery secured" : sanctuaryUnlocked ? "The sanctuary is open" : "Explore Aster Vale"}</h2>
@@ -190,7 +191,7 @@ export default function AncientRuinsEncounter({ onBack }: Props) {
   );
 }
 
-function IslandBoard({ reachable, current, sanctuaryUnlocked, completed, discovery, onChoose }: { reachable: NodeId[]; current: NodeId; sanctuaryUnlocked: boolean; completed: PoiId[]; discovery: boolean; onChoose: (id: NodeId) => void }) {
+function IslandBoard({ reachable, current, sanctuaryUnlocked, completed, discovery, route, onArrive, onChoose }: { reachable: NodeId[]; current: NodeId; sanctuaryUnlocked: boolean; completed: PoiId[]; discovery: boolean; route: NodeId[]; onArrive: (id: NodeId) => void; onChoose: (id: NodeId) => void }) {
   return <group position={[0, -0.55, 0]} rotation={[-0.08, 0, 0]} scale={1.1}>
     <mesh receiveShadow rotation={[-Math.PI/2,0,0]} position={[0,-0.16,0]}><planeGeometry args={[15,10.5]}/><meshPhysicalMaterial color="#176f83" roughness={0.2} clearcoat={0.62}/></mesh>
     <IslandMass />
@@ -198,6 +199,7 @@ function IslandBoard({ reachable, current, sanctuaryUnlocked, completed, discove
     {NODES.map((node) => <PathNode key={node.id} node={node} active={current===node.id} reachable={reachable.includes(node.id)} locked={node.id==="sanctuary"&&!sanctuaryUnlocked} onChoose={()=>onChoose(node.id)} />)}
     <BrokenGate completed={completed.includes("gate")}/><ExcavationTrench completed={completed.includes("trench")}/><ScholarsTablet completed={completed.includes("tablet")}/><InnerSanctuary unlocked={sanctuaryUnlocked} discovered={discovery}/>
     <PalmCluster /><Rubble position={[-3.2,.2,-1.8]} /><Rubble position={[2.8,.2,1.9]} />
+    <ExplorerPawn route={route} onArrive={onArrive} />
   </group>;
 }
 
@@ -215,9 +217,37 @@ function PathNode({node,active,reachable,locked,onChoose}:{node:Node;active:bool
   {reachable&&<mesh rotation={[-Math.PI/2,0,0]} position={[0,.3,0]}><ringGeometry args={[.32,.5,32]}/><meshBasicMaterial color="#78ffad"/></mesh>}
 </group>}
 
-function ExplorerPawn({route}:{route:NodeId[]}){const ref=useRef<THREE.Group>(null),segment=useRef(0);useEffect(()=>{segment.current=0;const start=BY_ID[route[0]].position;if(ref.current)ref.current.position.set(start[0],.52,start[2])},[route]);useFrame((_,delta)=>{if(!ref.current)return;const idx=Math.min(segment.current,route.length-1),next=Math.min(idx+1,route.length-1),p=BY_ID[route[next]].position,target=new THREE.Vector3(p[0],.52,p[2]);ref.current.position.lerp(target,1-Math.pow(.0015,delta));if(ref.current.position.distanceTo(target)<.045&&next>idx)segment.current=next});const start=BY_ID[route[0]].position;return <group ref={ref} position={[start[0],.52,start[2]]}>
-  <mesh castShadow><cylinderGeometry args={[.28,.33,.11,22]}/><meshStandardMaterial color="#c8a767"/></mesh><mesh castShadow position={[0,.4,0]}><capsuleGeometry args={[.14,.34,5,9]}/><meshStandardMaterial color="#b8483c"/></mesh><mesh castShadow position={[0,.72,0]}><sphereGeometry args={[.14,14,10]}/><meshStandardMaterial color="#d9b18a"/></mesh><mesh castShadow position={[0,.86,0]}><cylinderGeometry args={[.23,.18,.07,18]}/><meshStandardMaterial color="#4b3826"/></mesh>
-</group>}
+function ExplorerPawn({route,onArrive}:{route:NodeId[];onArrive:(id:NodeId)=>void}){
+  const ref=useRef<THREE.Group>(null);
+  const segment=useRef(0);
+  const arrived=useRef(false);
+  useEffect(()=>{
+    segment.current=0;
+    arrived.current=false;
+    const start=BY_ID[route[0]].position;
+    if(ref.current)ref.current.position.set(start[0],.52,start[2]);
+  },[route]);
+  useFrame((_,delta)=>{
+    if(!ref.current || route.length<=1)return;
+    const idx=Math.min(segment.current,route.length-1);
+    const next=Math.min(idx+1,route.length-1);
+    const p=BY_ID[route[next]].position;
+    const target=new THREE.Vector3(p[0],.52,p[2]);
+    ref.current.position.lerp(target,1-Math.pow(.0015,delta));
+    if(ref.current.position.distanceTo(target)<.045){
+      if(next>idx)segment.current=next;
+      if(next===route.length-1&&!arrived.current){
+        arrived.current=true;
+        ref.current.position.copy(target);
+        onArrive(route[next]);
+      }
+    }
+  });
+  const start=BY_ID[route[0]].position;
+  return <group ref={ref} position={[start[0],.52,start[2]]}>
+    <mesh castShadow><cylinderGeometry args={[.28,.33,.11,22]}/><meshStandardMaterial color="#c8a767"/></mesh><mesh castShadow position={[0,.4,0]}><capsuleGeometry args={[.14,.34,5,9]}/><meshStandardMaterial color="#b8483c"/></mesh><mesh castShadow position={[0,.72,0]}><sphereGeometry args={[.14,14,10]}/><meshStandardMaterial color="#d9b18a"/></mesh><mesh castShadow position={[0,.86,0]}><cylinderGeometry args={[.23,.18,.07,18]}/><meshStandardMaterial color="#4b3826"/></mesh>
+  </group>;
+}
 
 function BrokenGate({completed}:{completed:boolean}){return <group position={[-2.4,.18,.8]} rotation={[0,.25,0]}><mesh castShadow position={[-.5,.55,0]}><boxGeometry args={[.28,1.1,.34]}/><meshStandardMaterial color="#cbbd92"/></mesh><mesh castShadow position={[.5,.46,0]}><boxGeometry args={[.28,.92,.34]}/><meshStandardMaterial color="#b9aa82"/></mesh><mesh castShadow position={[-.08,1.0,0]}><boxGeometry args={[1.15,.2,.32]}/><meshStandardMaterial color={completed?"#eadb9f":"#d4c69b"} emissive={completed?"#8b6b20":"#000000"} emissiveIntensity={completed?.65:0}/></mesh>{completed&&<pointLight position={[0,1.05,.3]} intensity={.7} color="#ffd36a" distance={2}/>}</group>}
 function ExcavationTrench({completed}:{completed:boolean}){return <group position={[1.25,.12,1.1]}><mesh receiveShadow position={[0,-.02,0]}><boxGeometry args={[1.35,.12,.8]}/><meshStandardMaterial color="#75543b"/></mesh><mesh castShadow position={[.3,.12,.05]}><dodecahedronGeometry args={[.23,0]}/><meshStandardMaterial color="#d0be8d"/></mesh>{completed&&<mesh castShadow position={[-.15,.2,-.05]}><octahedronGeometry args={[.2,0]}/><meshStandardMaterial color="#c9a14a" metalness={.25} emissive="#6f4f12" emissiveIntensity={.25}/></mesh>}</group>}
