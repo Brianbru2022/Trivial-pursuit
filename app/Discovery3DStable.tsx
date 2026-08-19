@@ -211,51 +211,39 @@ function Board({ reachable, selected, onSelect }: { reachable: string[]; selecte
   );
 }
 
-function makeWaterTexture() {
-  const size = 64;
-  const data = new Uint8Array(size * size * 4);
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const i = (y * size + x) * 4;
-      const wave = 128 + Math.sin(x * 0.72 + y * 0.18) * 46 + Math.sin(y * 0.55 - x * 0.16) * 32;
-      const noise = ((x * 17 + y * 31) % 19) - 9;
-      const value = Math.max(0, Math.min(255, wave + noise));
-      data[i] = value;
-      data[i + 1] = value;
-      data[i + 2] = value;
-      data[i + 3] = 255;
-    }
-  }
-  const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
-  texture.needsUpdate = true;
-  texture.wrapS = THREE.RepeatWrapping;
-  texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(5.5, 4.0);
-  return texture;
-}
-
 function WaterSurface() {
-  const texture = useMemo(() => makeWaterTexture(), []);
-  const ref = useRef<THREE.Mesh>(null);
+  const top = useRef<THREE.Mesh>(null);
+  const glints = useRef<THREE.Group>(null);
   useFrame(({ clock }) => {
-    texture.offset.x = clock.elapsedTime * 0.012;
-    texture.offset.y = clock.elapsedTime * -0.008;
-    if (ref.current) ref.current.position.y = -0.055 + Math.sin(clock.elapsedTime * 0.45) * 0.008;
+    if (top.current) {
+      top.current.position.y = -0.04 + Math.sin(clock.elapsedTime * 0.55) * 0.01;
+      top.current.rotation.z = Math.sin(clock.elapsedTime * 0.13) * 0.003;
+    }
+    if (glints.current) glints.current.position.x = Math.sin(clock.elapsedTime * 0.18) * 0.18;
   });
+  const streaks: [number, number, number, number][] = [
+    [-7.5, -2.1, 1.1, 0.03], [-4.0, 2.5, 1.4, 0.035], [-0.6, -1.8, 1.0, 0.025],
+    [2.1, 2.8, 1.2, 0.03], [5.8, -1.0, 1.45, 0.035], [7.2, 2.0, 0.9, 0.025],
+  ];
   return (
-    <mesh ref={ref} receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.055, 0]}>
-      <planeGeometry args={[19.8, 13.8, 36, 28]} />
-      <meshPhysicalMaterial
-        color="#116d86"
-        roughness={0.22}
-        metalness={0.08}
-        clearcoat={0.72}
-        clearcoatRoughness={0.18}
-        bumpMap={texture}
-        bumpScale={0.12}
-        roughnessMap={texture}
-      />
-    </mesh>
+    <group>
+      <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.075, 0]}>
+        <planeGeometry args={[19.8, 13.8]} />
+        <meshPhysicalMaterial color="#0d536b" roughness={0.34} metalness={0.06} clearcoat={0.34} />
+      </mesh>
+      <mesh ref={top} receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.04, 0]}>
+        <planeGeometry args={[19.65, 13.65, 24, 18]} />
+        <meshPhysicalMaterial color="#167d93" roughness={0.2} metalness={0.1} clearcoat={0.72} clearcoatRoughness={0.16} transparent opacity={0.9} />
+      </mesh>
+      <group ref={glints}>
+        {streaks.map(([x, z, width, height], i) => (
+          <mesh key={i} rotation={[-Math.PI / 2, 0, i * 0.45]} position={[x, -0.025, z]}>
+            <planeGeometry args={[width, height]} />
+            <meshBasicMaterial color="#9ddce0" transparent opacity={0.45} />
+          </mesh>
+        ))}
+      </group>
+    </group>
   );
 }
 
@@ -332,10 +320,6 @@ function Island({ location, selected, reachable, onClick }: { location: Location
           </mesh>
         </group>
       ))}
-      <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.005, 0]} scale={[1.22, 1.0, 1.0]}>
-        <ringGeometry args={[1.0, 1.18, 28]} />
-        <meshStandardMaterial color={palette.shore} roughness={0.92} transparent opacity={0.7} />
-      </mesh>
       {reachable && (
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.18, 0]}>
           <ringGeometry args={[1.08, 1.3, 40]} />
@@ -355,7 +339,7 @@ function Island({ location, selected, reachable, onClick }: { location: Location
 
 function Model({ kind }: { kind: Kind }) {
   if (kind === "frozen") {
-    return <group>{[-0.38, 0.08, 0.62].map((x, i) => <mesh key={i} castShadow position={[x, 0.5, (i - 1) * 0.12]}><coneGeometry args={[0.34, 1.1, 6]} /><meshStandardMaterial color={i === 1 ? "#ffffff" : "#dce7e7" /></mesh>)}</group>;
+    return <group>{[-0.38, 0.08, 0.62].map((x, i) => <mesh key={i} castShadow position={[x, 0.5, (i - 1) * 0.12]}><coneGeometry args={[0.34, 1.1, 6]} /><meshStandardMaterial color={i === 1 ? "#ffffff" : "#dce7e7"} /></mesh>)}</group>;
   }
   if (kind === "ruins" || kind === "temple") {
     return <group>{[-0.42, 0, 0.42].map((x, i) => <mesh key={i} castShadow position={[x, 0.48, 0]}><cylinderGeometry args={[0.09, 0.12, 0.94, 10]} /><meshStandardMaterial color="#d1c49b" /></mesh>)}<mesh castShadow position={[0, 0.94, 0]}><boxGeometry args={[1.12, 0.12, 0.25]} /><meshStandardMaterial color="#b9aa81" /></mesh></group>;
