@@ -1,7 +1,7 @@
 "use client";
 
-import Discovery3DFull from "./Discovery3DFull";
+import Discovery3DPlayable from "./Discovery3DPlayable";
 
 export default function Home(){
-  return <Discovery3DFull/>;
+  return <Discovery3DPlayable/>;
 }
