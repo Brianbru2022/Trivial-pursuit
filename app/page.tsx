@@ -1,7 +1,7 @@
 "use client";
 
-import DiscoveryLegends from "./DiscoveryLegends";
+import Discovery3DPrototype from "./Discovery3DPrototype";
 
 export default function Home(){
-  return <DiscoveryLegends/>;
+  return <Discovery3DPrototype/>;
 }
