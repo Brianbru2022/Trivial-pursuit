@@ -1,7 +1,7 @@
 "use client";
 
-import Discovery3DStyled from "./Discovery3DStyled";
+import DiscoveryEncounterTest from "./DiscoveryEncounterTest";
 
 export default function Home(){
-  return <Discovery3DStyled/>;
+  return <DiscoveryEncounterTest/>;
 }
