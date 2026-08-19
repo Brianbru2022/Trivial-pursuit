@@ -1,0 +1,32 @@
+name: Import cropped Aster Vale island art
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/import-aster-vale-island.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  import-island:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Download cropped island asset
+        run: |
+          mkdir -p public/assets/aster-vale
+          curl -L --fail --retry 3 'https://photoshop-api.adobe.io/v2/short-url/urn:aaid:ps:US:6778d91d-d4b8-4b0c-b537-32c27ceb03a7' -o public/assets/aster-vale/island.png
+          test -s public/assets/aster-vale/island.png
+          file public/assets/aster-vale/island.png
+      - name: Commit island asset and remove importer
+        run: |
+          rm .github/workflows/import-aster-vale-island.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add public/assets/aster-vale/island.png .github/workflows/import-aster-vale-island.yml
+          git commit -m 'Add cropped Aster Vale island art'
+          git push
