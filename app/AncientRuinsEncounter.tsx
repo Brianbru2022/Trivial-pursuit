@@ -132,7 +132,7 @@ export default function AncientRuinsEncounter({ onBack }: Props) {
         <div className={styles.progress}>
           <span>Knowledge <b>{knowledge}</b></span><span>Relics <b>{relics}</b></span><span>Clues <b>{clues}</b></span><span>Sites <b>{completed.length}/4</b></span>
         </div>
-        <button className={styles.back} onClick={onBack}>BACK TO WORLD</button>
+        <button className={styles.back} onClick={onBack} disabled={!canLeave}>{canLeave ? "SAIL TO WORLD" : "RETURN VIA BEACH"}</button>
       </header>
 
       <section className={styles.stage}>
