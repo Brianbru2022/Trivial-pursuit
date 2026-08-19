@@ -1,66 +1,21 @@
 "use client";
 
-import { Canvas } from "@react-three/fiber";
+import { Canvas, useThree } from "@react-three/fiber";
 import { ContactShadows, Html } from "@react-three/drei";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import * as THREE from "three";
 import styles from "./AncientRuinsEncounter.module.css";
 
 type PoiId = "gate" | "trench" | "tablet" | "sanctuary";
 type Question = { prompt: string; answer: string; options: string[] };
 type Poi = { id: PoiId; name: string; subtitle: string; position: [number, number, number]; reward: string; question: Question };
-
 type Props = { onBack?: () => void };
 
 const POIS: Poi[] = [
-  {
-    id: "gate",
-    name: "Broken Gate",
-    subtitle: "Decode the entrance inscription",
-    position: [-2.25, 0.28, 1.4],
-    reward: "+1 Knowledge",
-    question: {
-      prompt: "Which ancient civilisation built Machu Picchu?",
-      answer: "Inca",
-      options: ["Maya", "Inca", "Aztec", "Olmec"],
-    },
-  },
-  {
-    id: "trench",
-    name: "Excavation Trench",
-    subtitle: "Identify the buried artefact",
-    position: [2.15, 0.26, 1.25],
-    reward: "+1 Relic",
-    question: {
-      prompt: "Archaeologists use which term for the study of layers in an excavation?",
-      answer: "Stratigraphy",
-      options: ["Topography", "Stratigraphy", "Cartography", "Epigraphy"],
-    },
-  },
-  {
-    id: "tablet",
-    name: "Scholar's Tablet",
-    subtitle: "Recover a clue to the sanctuary",
-    position: [-1.55, 0.34, -1.35],
-    reward: "+1 Clue",
-    question: {
-      prompt: "The Rosetta Stone was crucial in deciphering which script?",
-      answer: "Egyptian hieroglyphs",
-      options: ["Linear B", "Cuneiform", "Egyptian hieroglyphs", "Phoenician"],
-    },
-  },
-  {
-    id: "sanctuary",
-    name: "Inner Sanctuary",
-    subtitle: "Claim the legendary discovery",
-    position: [1.45, 0.42, -1.5],
-    reward: "Legendary Discovery",
-    question: {
-      prompt: "Which Greek archaeologist is most associated with the excavation of Knossos?",
-      answer: "Arthur Evans",
-      options: ["Howard Carter", "Heinrich Schliemann", "Arthur Evans", "Flinders Petrie"],
-    },
-  },
+  { id: "gate", name: "Broken Gate", subtitle: "Decode the entrance inscription", position: [-2.25, 0.28, 1.4], reward: "+1 Knowledge", question: { prompt: "Which ancient civilisation built Machu Picchu?", answer: "Inca", options: ["Maya", "Inca", "Aztec", "Olmec"] } },
+  { id: "trench", name: "Excavation Trench", subtitle: "Identify the buried artefact", position: [2.15, 0.26, 1.25], reward: "+1 Relic", question: { prompt: "Archaeologists use which term for the study of layers in an excavation?", answer: "Stratigraphy", options: ["Topography", "Stratigraphy", "Cartography", "Epigraphy"] } },
+  { id: "tablet", name: "Scholar's Tablet", subtitle: "Recover a clue to the sanctuary", position: [-1.55, 0.34, -1.35], reward: "+1 Clue", question: { prompt: "The Rosetta Stone was crucial in deciphering which script?", answer: "Egyptian hieroglyphs", options: ["Linear B", "Cuneiform", "Egyptian hieroglyphs", "Phoenician"] } },
+  { id: "sanctuary", name: "Inner Sanctuary", subtitle: "Claim the legendary discovery", position: [1.45, 0.42, -1.5], reward: "Legendary Discovery", question: { prompt: "Which Greek archaeologist is most associated with the excavation of Knossos?", answer: "Arthur Evans", options: ["Howard Carter", "Heinrich Schliemann", "Arthur Evans", "Flinders Petrie"] } },
 ];
 
 export default function AncientRuinsEncounter({ onBack }: Props) {
@@ -71,7 +26,6 @@ export default function AncientRuinsEncounter({ onBack }: Props) {
   const [relics, setRelics] = useState(0);
   const [clues, setClues] = useState(0);
   const [discovery, setDiscovery] = useState(false);
-
   const sanctuaryUnlocked = completed.filter((id) => id !== "sanctuary").length >= 2;
 
   function choosePoi(poi: Poi) {
@@ -86,7 +40,6 @@ export default function AncientRuinsEncounter({ onBack }: Props) {
     const correct = option === selected.question.answer;
     setResult(correct ? "correct" : "wrong");
     if (!correct) return;
-
     setCompleted((current) => [...current, selected.id]);
     if (selected.id === "gate") setKnowledge((v) => v + 1);
     if (selected.id === "trench") setRelics((v) => v + 1);
@@ -102,10 +55,7 @@ export default function AncientRuinsEncounter({ onBack }: Props) {
   return (
     <main className={styles.page}>
       <header className={styles.header}>
-        <div>
-          <small>ISLAND ENCOUNTER • ANCIENT RUINS</small>
-          <h1>The Ruins of Aster Vale</h1>
-        </div>
+        <div><small>ISLAND ENCOUNTER • ANCIENT RUINS</small><h1>The Ruins of Aster Vale</h1></div>
         <div className={styles.progress}>
           <span>Knowledge <b>{knowledge}</b></span>
           <span>Relics <b>{relics}</b></span>
@@ -116,7 +66,8 @@ export default function AncientRuinsEncounter({ onBack }: Props) {
       </header>
 
       <section className={styles.stage}>
-        <Canvas orthographic shadows dpr={[1, 1.6]} camera={{ position: [8.6, 7.2, 8.6], zoom: 78, near: 0.1, far: 80 }}>
+        <Canvas orthographic shadows dpr={[1, 1.6]} camera={{ position: [8.6, 7.2, 8.6], zoom: 58, near: 0.1, far: 80 }}>
+          <EncounterCamera />
           <color attach="background" args={["#102b30"]} />
           <ambientLight intensity={1.05} />
           <hemisphereLight args={["#dcecff", "#463923", 1.25]} />
@@ -167,6 +118,18 @@ export default function AncientRuinsEncounter({ onBack }: Props) {
   );
 }
 
+function EncounterCamera() {
+  const { camera } = useThree();
+  useEffect(() => {
+    camera.position.set(8.6, 7.2, 8.6);
+    camera.lookAt(0, 0.25, 0);
+    const ortho = camera as THREE.OrthographicCamera;
+    ortho.zoom = 58;
+    ortho.updateProjectionMatrix();
+  }, [camera]);
+  return null;
+}
+
 function RuinsScene({ completed, sanctuaryUnlocked, onSelect }: { completed: PoiId[]; sanctuaryUnlocked: boolean; onSelect: (poi: Poi) => void }) {
   const groundShape = useMemo(() => {
     const shape = new THREE.Shape();
@@ -207,14 +170,8 @@ function PoiMarker({ poi, done, locked, onSelect }: { poi: Poi; done: boolean; l
   const colour = done ? "#5f8f62" : locked ? "#655f55" : "#e1b95b";
   return (
     <group position={poi.position} onClick={(e) => { e.stopPropagation(); onSelect(); }}>
-      <mesh position={[0, 0.08, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[0.38, 0.56, 36]} />
-        <meshBasicMaterial color={colour} transparent opacity={locked ? 0.45 : 0.95} />
-      </mesh>
-      <mesh castShadow position={[0, 0.16, 0]}>
-        <cylinderGeometry args={[0.15, 0.18, 0.22, 18]} />
-        <meshStandardMaterial color={colour} metalness={0.2} roughness={0.45} />
-      </mesh>
+      <mesh position={[0, 0.08, 0]} rotation={[-Math.PI / 2, 0, 0]}><ringGeometry args={[0.38, 0.56, 36]} /><meshBasicMaterial color={colour} transparent opacity={locked ? 0.45 : 0.95} /></mesh>
+      <mesh castShadow position={[0, 0.16, 0]}><cylinderGeometry args={[0.15, 0.18, 0.22, 18]} /><meshStandardMaterial color={colour} metalness={0.2} roughness={0.45} /></mesh>
       <Html center position={[0, 0.75, 0]} distanceFactor={8.5}>
         <button className={`${styles.poiLabel} ${locked ? styles.poiLocked : ""}`} disabled={locked || done} onClick={(e) => { e.stopPropagation(); onSelect(); }}>{done ? `✓ ${poi.name}` : locked ? `Locked • ${poi.name}` : poi.name}</button>
       </Html>
