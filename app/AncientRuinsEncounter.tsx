@@ -1,9 +1,8 @@
 "use client";
 
-import { Canvas, useThree } from "@react-three/fiber";
+import { Canvas } from "@react-three/fiber";
 import { ContactShadows } from "@react-three/drei";
-import { useEffect, useState } from "react";
-import * as THREE from "three";
+import { useState } from "react";
 import styles from "./AncientRuinsEncounter.module.css";
 
 type PoiId = "gate" | "trench" | "tablet" | "sanctuary";
@@ -58,14 +57,15 @@ export default function AncientRuinsEncounter({ onBack }: Props) {
       </header>
 
       <section className={styles.stage}>
-        <Canvas orthographic shadows dpr={[1, 1.5]} camera={{ position: [10, 9, 10], zoom: 54, near: 0.1, far: 100 }}>
-          <EncounterCamera />
+        <Canvas shadows dpr={[1, 1.5]} camera={{ position: [0, 8.5, 10.5], fov: 42, near: 0.1, far: 100 }}>
           <color attach="background" args={["#102b30"]} />
-          <ambientLight intensity={1.15} />
-          <hemisphereLight args={["#dcecff", "#4b3a25", 1.25]} />
+          <ambientLight intensity={1.2} />
+          <hemisphereLight args={["#dcecff", "#4b3a25", 1.3]} />
           <directionalLight castShadow position={[-6, 11, 8]} intensity={3.4} shadow-mapSize-width={2048} shadow-mapSize-height={2048} />
-          <StableRuinsScene sanctuaryUnlocked={sanctuaryUnlocked} />
-          <ContactShadows position={[0, 0.02, 0]} opacity={0.4} scale={13} blur={2.5} far={8} />
+          <group rotation={[-0.12, 0, 0]} position={[0, -0.8, 0]}>
+            <StableRuinsScene sanctuaryUnlocked={sanctuaryUnlocked} />
+          </group>
+          <ContactShadows position={[0, -0.78, 0]} opacity={0.38} scale={13} blur={2.5} far={8} />
         </Canvas>
 
         <div className={styles.poiOverlay}>
@@ -105,18 +105,6 @@ export default function AncientRuinsEncounter({ onBack }: Props) {
       </section>
     </main>
   );
-}
-
-function EncounterCamera() {
-  const { camera } = useThree();
-  useEffect(() => {
-    camera.position.set(10, 9, 10);
-    camera.lookAt(0, 0.2, 0);
-    const ortho = camera as THREE.OrthographicCamera;
-    ortho.zoom = 54;
-    ortho.updateProjectionMatrix();
-  }, [camera]);
-  return null;
 }
 
 function StableRuinsScene({ sanctuaryUnlocked }: { sanctuaryUnlocked: boolean }) {
