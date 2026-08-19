@@ -36,24 +36,18 @@ const POIS: Poi[] = [
 ];
 const POI_BY_ID = Object.fromEntries(POIS.map((poi) => [poi.id, poi])) as Record<PoiId, Poi>;
 
-function exactRoutes(start: NodeId, steps: number) {
+function clockwiseRoute(start: NodeId, steps: number): NodeId[] {
   const startIndex = ORDER.indexOf(start);
-  const clockwise = Array.from({ length: steps + 1 }, (_, i) => ORDER[(startIndex + i) % ORDER.length]);
-  const anticlockwise = Array.from({ length: steps + 1 }, (_, i) => ORDER[(startIndex - i + ORDER.length * 4) % ORDER.length]);
-  const routes = new Map<NodeId, NodeId[]>();
-  routes.set(clockwise[clockwise.length - 1], clockwise);
-  routes.set(anticlockwise[anticlockwise.length - 1], anticlockwise);
-  routes.delete(start);
-  return routes;
+  return Array.from({ length: steps + 1 }, (_, i) => ORDER[(startIndex + i) % ORDER.length]);
 }
 
 export default function AncientRuinsEncounter({ onBack }: Props) {
   const [position, setPosition] = useState<NodeId>("landing");
   const [route, setRoute] = useState<NodeId[]>(["landing"]);
   const [roll, setRoll] = useState<number | null>(null);
-  const [legalRoutes, setLegalRoutes] = useState<Map<NodeId, NodeId[]>>(new Map());
   const [moving, setMoving] = useState(false);
   const [turnComplete, setTurnComplete] = useState(false);
+  const [bonusRoll, setBonusRoll] = useState(false);
   const [completed, setCompleted] = useState<PoiId[]>([]);
   const [selected, setSelected] = useState<Poi | null>(null);
   const [result, setResult] = useState<"correct" | "wrong" | null>(null);
@@ -61,41 +55,36 @@ export default function AncientRuinsEncounter({ onBack }: Props) {
   const [relics, setRelics] = useState(0);
   const [clues, setClues] = useState(0);
   const [discovery, setDiscovery] = useState(false);
-  const [message, setMessage] = useState("Roll the die to move around Aster Vale.");
+  const [target, setTarget] = useState<NodeId | null>(null);
+  const [message, setMessage] = useState("Roll the D4. Movement around Aster Vale is clockwise only.");
 
   const sanctuaryUnlocked = completed.filter((id) => id !== "sanctuary").length >= 2;
   const canLeave = position === "landing" && !moving && !selected;
 
   function applyRoll(value: number) {
-    if (moving || selected || discovery || turnComplete) return;
-    const routes = exactRoutes(position, value);
-    if (!sanctuaryUnlocked) routes.delete("sanctuary");
+    if (moving || selected || turnComplete) return;
+    const path = clockwiseRoute(position, value);
+    const destination = path[path.length - 1];
     setRoll(value);
-    setLegalRoutes(routes);
-    setMessage(routes.size ? `Rolled ${value}. Choose one of the glowing spaces exactly ${value} steps away.` : `Rolled ${value}. No legal destination — end the turn and try again.`);
-  }
-
-  function chooseDestination(id: NodeId) {
-    const path = legalRoutes.get(id);
-    if (!path || moving) return;
+    setTarget(destination);
     setRoute(path);
-    setLegalRoutes(new Map());
     setMoving(true);
-    setMessage(`Walking to ${BY_ID[id].name}…`);
+    setBonusRoll(false);
+    setMessage(`Rolled ${value}. Moving clockwise to ${BY_ID[destination].name}…`);
   }
 
   function finishMove(id: NodeId) {
     setPosition(id);
-    setRoll(null);
+    setTarget(null);
     setMoving(false);
     const node = BY_ID[id];
-    if (node.poi && !completed.includes(node.poi)) {
+    if (node.poi && !completed.includes(node.poi) && (node.poi !== "sanctuary" || sanctuaryUnlocked)) {
       setSelected(POI_BY_ID[node.poi]);
       setResult(null);
-      setMessage(`You reached ${node.name}. Resolve this encounter.`);
+      setMessage(`You reached ${node.name}. Answer correctly to roll again.`);
     } else {
       setTurnComplete(true);
-      setMessage(`${node.name}. Movement complete — end the island turn.`);
+      setMessage(node.poi === "sanctuary" && !sanctuaryUnlocked ? "The Inner Sanctuary is still sealed. Your turn ends here." : `${node.name}. Your island turn ends here.`);
     }
   }
 
@@ -103,34 +92,47 @@ export default function AncientRuinsEncounter({ onBack }: Props) {
     if (!selected || result) return;
     const correct = option === selected.question.answer;
     setResult(correct ? "correct" : "wrong");
-    if (!correct) return;
+    if (!correct) {
+      setTurnComplete(true);
+      return;
+    }
     setCompleted((current) => current.includes(selected.id) ? current : [...current, selected.id]);
     if (selected.id === "gate") setKnowledge((v) => v + 1);
     if (selected.id === "trench") setRelics((v) => v + 1);
     if (selected.id === "tablet") setClues((v) => v + 1);
     if (selected.id === "sanctuary") setDiscovery(true);
+    setBonusRoll(true);
   }
 
   function closeQuestion() {
+    const wasCorrect = result === "correct";
     setSelected(null);
     setResult(null);
-    setTurnComplete(true);
-    setMessage("Encounter resolved — end the island turn.");
+    setRoll(null);
+    setRoute([position]);
+    if (wasCorrect) {
+      setTurnComplete(false);
+      setMessage("Correct — bonus roll! Roll the D4 again and continue clockwise.");
+    } else {
+      setTurnComplete(true);
+      setMessage("Wrong answer — your island turn ends here.");
+    }
   }
 
   function endIslandTurn() {
     if (moving || selected) return;
     setTurnComplete(false);
+    setBonusRoll(false);
     setRoll(null);
-    setLegalRoutes(new Map());
+    setTarget(null);
     setRoute([position]);
-    setMessage(position === "landing" ? "You are at Landing Beach. Roll to explore, or sail back to the world map." : "Roll the die for your next move around Aster Vale.");
+    setMessage(position === "landing" ? "You are at Landing Beach. Roll the D4 to explore, or sail back to the world map." : "New island turn: roll the D4 and move clockwise.");
   }
 
   return (
     <main className={styles.page}>
       <header className={styles.header}>
-        <div><small>ISLAND ENCOUNTER • ANCIENT RUINS</small><h1>The Ruins of Aster Vale</h1></div>
+        <div><small>ISLAND ENCOUNTER • ANCIENT RUINS • CLOCKWISE</small><h1>The Ruins of Aster Vale</h1></div>
         <div className={styles.progress}>
           <span>Knowledge <b>{knowledge}</b></span><span>Relics <b>{relics}</b></span><span>Clues <b>{clues}</b></span><span>Sites <b>{completed.length}/4</b></span>
         </div>
@@ -143,26 +145,27 @@ export default function AncientRuinsEncounter({ onBack }: Props) {
           <ambientLight intensity={1.05} />
           <hemisphereLight args={["#dcecff", "#4b3a25", 1.3]} />
           <directionalLight castShadow position={[-6, 12, 8]} intensity={3.5} shadow-mapSize-width={2048} shadow-mapSize-height={2048} />
-          <IslandBoard reachable={[...legalRoutes.keys()]} current={position} sanctuaryUnlocked={sanctuaryUnlocked} completed={completed} discovery={discovery} route={route} onArrive={finishMove} onChoose={chooseDestination} />
+          <IslandBoard current={position} target={target} sanctuaryUnlocked={sanctuaryUnlocked} completed={completed} discovery={discovery} route={route} onArrive={finishMove} />
           <ContactShadows position={[0, -0.28, 0]} opacity={0.42} scale={14} blur={2.7} far={8} />
         </Canvas>
 
-        {roll !== null && <div className={styles.rollResult}>ROLLED <b>{roll}</b></div>}
+        {roll !== null && <div className={styles.rollResult}>D4 <b>{roll}</b></div>}
         <aside className={styles.objective}>
           <small>YOUR EXPEDITION</small>
-          <h2>{discovery ? "Discovery secured" : sanctuaryUnlocked ? "The sanctuary is open" : "Explore Aster Vale"}</h2>
+          <h2>{bonusRoll ? "Bonus roll" : discovery ? "Discovery secured" : sanctuaryUnlocked ? "The sanctuary is open" : "Explore Aster Vale"}</h2>
           <p>{message}</p>
         </aside>
-        <div className={styles.islandDice}><Dice3D onResult={applyRoll} disabled={moving || !!selected || discovery || turnComplete} /></div>
+        <div className={styles.islandDice}><Dice3D sides={4} onResult={applyRoll} disabled={moving || !!selected || turnComplete} /></div>
+
         <div className={styles.poiOverlay}>
           {NODES.map((node) => {
-            const available = legalRoutes.has(node.id);
             const complete = node.poi ? completed.includes(node.poi) : false;
             const locked = node.id === "sanctuary" && !sanctuaryUnlocked;
-            return <button key={node.id} className={`${styles.poiButton} ${styles[`poi_${node.id}`] || ""} ${available ? styles.available : ""} ${complete ? styles.done : ""} ${locked ? styles.locked : ""}`} onClick={() => chooseDestination(node.id)} disabled={!available}>
+            const isTarget = target === node.id;
+            return <div key={node.id} className={`${styles.poiButton} ${styles[`poi_${node.id}`] || ""} ${isTarget ? styles.available : ""} ${complete ? styles.done : ""} ${locked ? styles.locked : ""}`}>
               <b>{locked ? `🔒 ${node.name}` : complete ? `✓ ${node.name}` : node.name}</b>
-              <span>{available ? "Move here" : node.poi ? (complete ? POI_BY_ID[node.poi].reward : "Encounter site") : "Path space"}</span>
-            </button>;
+              <span>{isTarget ? "Landing here" : node.poi ? (complete ? POI_BY_ID[node.poi].reward : "Encounter site") : "Path space"}</span>
+            </div>;
           })}
         </div>
 
@@ -179,8 +182,8 @@ export default function AncientRuinsEncounter({ onBack }: Props) {
               <div className={styles.answers}>
                 {selected.question.options.map((option) => <button key={option} disabled={!!result} onClick={() => answer(option)} className={result && option === selected.question.answer ? styles.correctAnswer : ""}>{option}</button>)}
               </div>
-              {result && <div className={result === "correct" ? styles.correct : styles.wrong}>{result === "correct" ? `Correct — ${selected.reward}` : `Not quite — the answer is ${selected.question.answer}.`}</div>}
-              {result && <button className={styles.continue} onClick={closeQuestion}>{result === "correct" ? "CONTINUE" : "ACCEPT RESULT"}</button>}
+              {result && <div className={result === "correct" ? styles.correct : styles.wrong}>{result === "correct" ? `Correct — ${selected.reward}. Bonus roll earned.` : `Not quite — the answer is ${selected.question.answer}. Turn over.`}</div>}
+              {result && <button className={styles.continue} onClick={closeQuestion}>{result === "correct" ? "TAKE BONUS ROLL" : "END TURN"}</button>}
             </article>
           </div>
         )}
@@ -191,12 +194,12 @@ export default function AncientRuinsEncounter({ onBack }: Props) {
   );
 }
 
-function IslandBoard({ reachable, current, sanctuaryUnlocked, completed, discovery, route, onArrive, onChoose }: { reachable: NodeId[]; current: NodeId; sanctuaryUnlocked: boolean; completed: PoiId[]; discovery: boolean; route: NodeId[]; onArrive: (id: NodeId) => void; onChoose: (id: NodeId) => void }) {
+function IslandBoard({ current, target, sanctuaryUnlocked, completed, discovery, route, onArrive }: { current: NodeId; target: NodeId | null; sanctuaryUnlocked: boolean; completed: PoiId[]; discovery: boolean; route: NodeId[]; onArrive: (id: NodeId) => void }) {
   return <group position={[0, -0.55, 0]} rotation={[-0.08, 0, 0]} scale={1.1}>
     <mesh receiveShadow rotation={[-Math.PI/2,0,0]} position={[0,-0.16,0]}><planeGeometry args={[15,10.5]}/><meshPhysicalMaterial color="#176f83" roughness={0.2} clearcoat={0.62}/></mesh>
     <IslandMass />
     {EDGES.map(([a,b]) => <PathSegment key={`${a}-${b}`} a={BY_ID[a].position} b={BY_ID[b].position} />)}
-    {NODES.map((node) => <PathNode key={node.id} node={node} active={current===node.id} reachable={reachable.includes(node.id)} locked={node.id==="sanctuary"&&!sanctuaryUnlocked} onChoose={()=>onChoose(node.id)} />)}
+    {NODES.map((node) => <PathNode key={node.id} node={node} active={current===node.id} target={target===node.id} locked={node.id==="sanctuary"&&!sanctuaryUnlocked} />)}
     <BrokenGate completed={completed.includes("gate")}/><ExcavationTrench completed={completed.includes("trench")}/><ScholarsTablet completed={completed.includes("tablet")}/><InnerSanctuary unlocked={sanctuaryUnlocked} discovered={discovery}/>
     <PalmCluster /><Rubble position={[-3.2,.2,-1.8]} /><Rubble position={[2.8,.2,1.9]} />
     <ExplorerPawn route={route} onArrive={onArrive} />
@@ -212,42 +215,16 @@ function IslandMass(){return <group>
 </group>}
 
 function PathSegment({a,b}:{a:[number,number,number];b:[number,number,number]}){const A=new THREE.Vector3(...a),B=new THREE.Vector3(...b),mid=A.clone().lerp(B,.5),distance=A.distanceTo(B),angle=Math.atan2(B.z-A.z,B.x-A.x);return <mesh receiveShadow castShadow position={[mid.x,.22,mid.z]} rotation={[0,-angle,0]}><boxGeometry args={[distance,.08,.22]}/><meshStandardMaterial color="#c4b184" roughness={.96}/></mesh>}
-function PathNode({node,active,reachable,locked,onChoose}:{node:Node;active:boolean;reachable:boolean;locked:boolean;onChoose:()=>void}){return <group position={node.position} onClick={e=>{e.stopPropagation();if(reachable)onChoose()}}>
-  <mesh castShadow position={[0,.23,0]}><cylinderGeometry args={[.26,.3,.09,20]}/><meshStandardMaterial color={locked?"#6f6b61":reachable?"#f1cf61":active?"#d99043":"#d4c598"} metalness={.05}/></mesh>
-  {reachable&&<mesh rotation={[-Math.PI/2,0,0]} position={[0,.3,0]}><ringGeometry args={[.32,.5,32]}/><meshBasicMaterial color="#78ffad"/></mesh>}
+function PathNode({node,active,target,locked}:{node:Node;active:boolean;target:boolean;locked:boolean}){return <group position={node.position}>
+  <mesh castShadow position={[0,.23,0]}><cylinderGeometry args={[.26,.3,.09,20]}/><meshStandardMaterial color={locked?"#6f6b61":target?"#f1cf61":active?"#d99043":"#d4c598"} metalness={.05}/></mesh>
+  {target&&<mesh rotation={[-Math.PI/2,0,0]} position={[0,.3,0]}><ringGeometry args={[.32,.5,32]}/><meshBasicMaterial color="#78ffad"/></mesh>}
 </group>}
 
 function ExplorerPawn({route,onArrive}:{route:NodeId[];onArrive:(id:NodeId)=>void}){
-  const ref=useRef<THREE.Group>(null);
-  const segment=useRef(0);
-  const arrived=useRef(false);
-  useEffect(()=>{
-    segment.current=0;
-    arrived.current=false;
-    const start=BY_ID[route[0]].position;
-    if(ref.current)ref.current.position.set(start[0],.52,start[2]);
-  },[route]);
-  useFrame((_,delta)=>{
-    if(!ref.current || route.length<=1)return;
-    const idx=Math.min(segment.current,route.length-1);
-    const next=Math.min(idx+1,route.length-1);
-    const p=BY_ID[route[next]].position;
-    const target=new THREE.Vector3(p[0],.52,p[2]);
-    ref.current.position.lerp(target,1-Math.pow(.0015,delta));
-    if(ref.current.position.distanceTo(target)<.045){
-      if(next>idx)segment.current=next;
-      if(next===route.length-1&&!arrived.current){
-        arrived.current=true;
-        ref.current.position.copy(target);
-        onArrive(route[next]);
-      }
-    }
-  });
-  const start=BY_ID[route[0]].position;
-  return <group ref={ref} position={[start[0],.52,start[2]]}>
-    <mesh castShadow><cylinderGeometry args={[.28,.33,.11,22]}/><meshStandardMaterial color="#c8a767"/></mesh><mesh castShadow position={[0,.4,0]}><capsuleGeometry args={[.14,.34,5,9]}/><meshStandardMaterial color="#b8483c"/></mesh><mesh castShadow position={[0,.72,0]}><sphereGeometry args={[.14,14,10]}/><meshStandardMaterial color="#d9b18a"/></mesh><mesh castShadow position={[0,.86,0]}><cylinderGeometry args={[.23,.18,.07,18]}/><meshStandardMaterial color="#4b3826"/></mesh>
-  </group>;
-}
+  const ref=useRef<THREE.Group>(null),segment=useRef(0),arrived=useRef(false);
+  useEffect(()=>{segment.current=0;arrived.current=false;const start=BY_ID[route[0]].position;if(ref.current)ref.current.position.set(start[0],.52,start[2])},[route]);
+  useFrame((_,delta)=>{if(!ref.current||route.length<=1)return;const idx=Math.min(segment.current,route.length-1),next=Math.min(idx+1,route.length-1),p=BY_ID[route[next]].position,target=new THREE.Vector3(p[0],.52,p[2]);ref.current.position.lerp(target,1-Math.pow(.0015,delta));if(ref.current.position.distanceTo(target)<.045){if(next>idx)segment.current=next;if(next===route.length-1&&!arrived.current){arrived.current=true;ref.current.position.copy(target);onArrive(route[next])}}});
+  const start=BY_ID[route[0]].position;return <group ref={ref} position={[start[0],.52,start[2]]}><mesh castShadow><cylinderGeometry args={[.28,.33,.11,22]}/><meshStandardMaterial color="#c8a767"/></mesh><mesh castShadow position={[0,.4,0]}><capsuleGeometry args={[.14,.34,5,9]}/><meshStandardMaterial color="#b8483c"/></mesh><mesh castShadow position={[0,.72,0]}><sphereGeometry args={[.14,14,10]}/><meshStandardMaterial color="#d9b18a"/></mesh><mesh castShadow position={[0,.86,0]}><cylinderGeometry args={[.23,.18,.07,18]}/><meshStandardMaterial color="#4b3826"/></mesh></group>}
 
 function BrokenGate({completed}:{completed:boolean}){return <group position={[-2.4,.18,.8]} rotation={[0,.25,0]}><mesh castShadow position={[-.5,.55,0]}><boxGeometry args={[.28,1.1,.34]}/><meshStandardMaterial color="#cbbd92"/></mesh><mesh castShadow position={[.5,.46,0]}><boxGeometry args={[.28,.92,.34]}/><meshStandardMaterial color="#b9aa82"/></mesh><mesh castShadow position={[-.08,1.0,0]}><boxGeometry args={[1.15,.2,.32]}/><meshStandardMaterial color={completed?"#eadb9f":"#d4c69b"} emissive={completed?"#8b6b20":"#000000"} emissiveIntensity={completed?.65:0}/></mesh>{completed&&<pointLight position={[0,1.05,.3]} intensity={.7} color="#ffd36a" distance={2}/>}</group>}
 function ExcavationTrench({completed}:{completed:boolean}){return <group position={[1.25,.12,1.1]}><mesh receiveShadow position={[0,-.02,0]}><boxGeometry args={[1.35,.12,.8]}/><meshStandardMaterial color="#75543b"/></mesh><mesh castShadow position={[.3,.12,.05]}><dodecahedronGeometry args={[.23,0]}/><meshStandardMaterial color="#d0be8d"/></mesh>{completed&&<mesh castShadow position={[-.15,.2,-.05]}><octahedronGeometry args={[.2,0]}/><meshStandardMaterial color="#c9a14a" metalness={.25} emissive="#6f4f12" emissiveIntensity={.25}/></mesh>}</group>}
