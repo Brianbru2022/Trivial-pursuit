@@ -1,7 +1,7 @@
 "use client";
 
-import Discovery3DPlayableFixed from "./Discovery3DPlayableFixed";
+import Discovery3DStable from "./Discovery3DStable";
 
 export default function Home(){
-  return <Discovery3DPlayableFixed/>;
+  return <Discovery3DStable/>;
 }
