@@ -1,23 +1,77 @@
 "use client";
 
-import { Canvas } from "@react-three/fiber";
+import { Canvas, useFrame } from "@react-three/fiber";
 import { ContactShadows } from "@react-three/drei";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import * as THREE from "three";
+import Dice3D, { DiceResultIcon } from "./Dice3D";
 import styles from "./AncientRuinsEncounter.module.css";
 
 type PoiId = "gate" | "trench" | "tablet" | "sanctuary";
+type NodeId = "landing" | "gate" | "ridge" | "trench" | "sanctuary" | "grove" | "tablet" | "lookout";
 type Question = { prompt: string; answer: string; options: string[] };
-type Poi = { id: PoiId; name: string; subtitle: string; reward: string; question: Question };
+type Poi = { id: PoiId; node: NodeId; name: string; reward: string; question: Question };
+type Node = { id: NodeId; name: string; position: [number, number, number]; poi?: PoiId };
 type Props = { onBack?: () => void };
 
-const POIS: Poi[] = [
-  { id: "gate", name: "Broken Gate", subtitle: "Decode the entrance inscription", reward: "+1 Knowledge", question: { prompt: "Which ancient civilisation built Machu Picchu?", answer: "Inca", options: ["Maya", "Inca", "Aztec", "Olmec"] } },
-  { id: "trench", name: "Excavation Trench", subtitle: "Identify the buried artefact", reward: "+1 Relic", question: { prompt: "Archaeologists use which term for the study of layers in an excavation?", answer: "Stratigraphy", options: ["Topography", "Stratigraphy", "Cartography", "Epigraphy"] } },
-  { id: "tablet", name: "Scholar's Tablet", subtitle: "Recover a clue to the sanctuary", reward: "+1 Clue", question: { prompt: "The Rosetta Stone was crucial in deciphering which script?", answer: "Egyptian hieroglyphs", options: ["Linear B", "Cuneiform", "Egyptian hieroglyphs", "Phoenician"] } },
-  { id: "sanctuary", name: "Inner Sanctuary", subtitle: "Claim the legendary discovery", reward: "Legendary Discovery", question: { prompt: "Which archaeologist is most associated with the excavation of Knossos?", answer: "Arthur Evans", options: ["Howard Carter", "Heinrich Schliemann", "Arthur Evans", "Flinders Petrie"] } },
+const NODES: Node[] = [
+  { id: "landing", name: "Landing Beach", position: [-3.7, 0.18, 2.2] },
+  { id: "gate", name: "Broken Gate", position: [-2.4, 0.18, 0.8], poi: "gate" },
+  { id: "ridge", name: "Old Ridge Path", position: [-0.8, 0.2, 1.65] },
+  { id: "trench", name: "Excavation Trench", position: [1.25, 0.18, 1.1], poi: "trench" },
+  { id: "sanctuary", name: "Inner Sanctuary", position: [2.7, 0.2, -0.35], poi: "sanctuary" },
+  { id: "grove", name: "Fig Grove", position: [1.1, 0.18, -1.9] },
+  { id: "tablet", name: "Scholar's Tablet", position: [-1.2, 0.2, -1.6], poi: "tablet" },
+  { id: "lookout", name: "Clifftop Lookout", position: [-3.2, 0.2, -0.45] },
 ];
+const BY_ID = Object.fromEntries(NODES.map((node) => [node.id, node])) as Record<NodeId, Node>;
+const EDGES: [NodeId, NodeId][] = [
+  ["landing", "gate"], ["gate", "ridge"], ["ridge", "trench"], ["trench", "sanctuary"],
+  ["sanctuary", "grove"], ["grove", "tablet"], ["tablet", "lookout"], ["lookout", "landing"],
+  ["ridge", "tablet"],
+];
+const ADJ: Record<NodeId, NodeId[]> = { landing: [], gate: [], ridge: [], trench: [], sanctuary: [], grove: [], tablet: [], lookout: [] };
+for (const [a, b] of EDGES) { ADJ[a].push(b); ADJ[b].push(a); }
+
+const POIS: Poi[] = [
+  { id: "gate", node: "gate", name: "Broken Gate", reward: "+1 Knowledge", question: { prompt: "Which ancient civilisation built Machu Picchu?", answer: "Inca", options: ["Maya", "Inca", "Aztec", "Olmec"] } },
+  { id: "trench", node: "trench", name: "Excavation Trench", reward: "+1 Relic", question: { prompt: "Archaeologists use which term for the study of layers in an excavation?", answer: "Stratigraphy", options: ["Topography", "Stratigraphy", "Cartography", "Epigraphy"] } },
+  { id: "tablet", node: "tablet", name: "Scholar's Tablet", reward: "+1 Clue", question: { prompt: "The Rosetta Stone was crucial in deciphering which script?", answer: "Egyptian hieroglyphs", options: ["Linear B", "Cuneiform", "Egyptian hieroglyphs", "Phoenician"] } },
+  { id: "sanctuary", node: "sanctuary", name: "Inner Sanctuary", reward: "Sun-Crowned Idol • 5 Glory", question: { prompt: "Which archaeologist is most associated with the excavation of Knossos?", answer: "Arthur Evans", options: ["Howard Carter", "Heinrich Schliemann", "Arthur Evans", "Flinders Petrie"] } },
+];
+const POI_BY_ID = Object.fromEntries(POIS.map((poi) => [poi.id, poi])) as Record<PoiId, Poi>;
+
+function reachableExactly(start: NodeId, steps: number) {
+  let frontier = new Set<NodeId>([start]);
+  for (let i = 0; i < steps; i++) {
+    const next = new Set<NodeId>();
+    for (const node of frontier) for (const neighbour of ADJ[node]) next.add(neighbour);
+    frontier = next;
+  }
+  frontier.delete(start);
+  return [...frontier];
+}
+
+function shortestPath(start: NodeId, end: NodeId) {
+  const previous = new Map<NodeId, NodeId | null>([[start, null]]);
+  const queue: NodeId[] = [start];
+  while (queue.length) {
+    const current = queue.shift()!;
+    if (current === end) break;
+    for (const neighbour of ADJ[current]) if (!previous.has(neighbour)) { previous.set(neighbour, current); queue.push(neighbour); }
+  }
+  const path: NodeId[] = [end];
+  let cursor = previous.get(end);
+  while (cursor) { path.push(cursor); cursor = previous.get(cursor) ?? null; }
+  return path.reverse();
+}
 
 export default function AncientRuinsEncounter({ onBack }: Props) {
+  const [position, setPosition] = useState<NodeId>("landing");
+  const [route, setRoute] = useState<NodeId[]>(["landing"]);
+  const [roll, setRoll] = useState<number | null>(null);
+  const [reachable, setReachable] = useState<NodeId[]>([]);
+  const [moving, setMoving] = useState(false);
   const [completed, setCompleted] = useState<PoiId[]>([]);
   const [selected, setSelected] = useState<Poi | null>(null);
   const [result, setResult] = useState<"correct" | "wrong" | null>(null);
@@ -25,13 +79,37 @@ export default function AncientRuinsEncounter({ onBack }: Props) {
   const [relics, setRelics] = useState(0);
   const [clues, setClues] = useState(0);
   const [discovery, setDiscovery] = useState(false);
+  const [message, setMessage] = useState("Roll the die to move around Aster Vale.");
+
   const sanctuaryUnlocked = completed.filter((id) => id !== "sanctuary").length >= 2;
 
-  function choosePoi(poi: Poi) {
-    if (completed.includes(poi.id)) return;
-    if (poi.id === "sanctuary" && !sanctuaryUnlocked) return;
-    setSelected(poi);
-    setResult(null);
+  function applyRoll(value: number) {
+    if (moving || selected || discovery) return;
+    const legal = reachableExactly(position, value).filter((id) => id !== "sanctuary" || sanctuaryUnlocked);
+    setRoll(value);
+    setReachable(legal);
+    setMessage(legal.length ? `Rolled ${value}. Choose a glowing space exactly ${value} steps away.` : `Rolled ${value}. No legal destination from here — roll again.`);
+  }
+
+  function chooseDestination(id: NodeId) {
+    if (!reachable.includes(id) || moving) return;
+    const path = shortestPath(position, id);
+    setRoute(path);
+    setReachable([]);
+    setMoving(true);
+    setMessage(`Walking to ${BY_ID[id].name}…`);
+    window.setTimeout(() => {
+      setPosition(id);
+      setRoll(null);
+      setMoving(false);
+      const node = BY_ID[id];
+      if (node.poi && !completed.includes(node.poi)) {
+        setSelected(POI_BY_ID[node.poi]);
+        setResult(null);
+      } else {
+        setMessage(`${node.name}. Your movement is complete — end the turn or roll again for testing.`);
+      }
+    }, Math.max(850, (path.length - 1) * 520));
   }
 
   function answer(option: string) {
@@ -39,11 +117,17 @@ export default function AncientRuinsEncounter({ onBack }: Props) {
     const correct = option === selected.question.answer;
     setResult(correct ? "correct" : "wrong");
     if (!correct) return;
-    setCompleted((current) => [...current, selected.id]);
+    setCompleted((current) => current.includes(selected.id) ? current : [...current, selected.id]);
     if (selected.id === "gate") setKnowledge((v) => v + 1);
     if (selected.id === "trench") setRelics((v) => v + 1);
     if (selected.id === "tablet") setClues((v) => v + 1);
     if (selected.id === "sanctuary") setDiscovery(true);
+  }
+
+  function closeQuestion() {
+    setSelected(null);
+    setResult(null);
+    setMessage("Encounter resolved. End the turn, or roll again for testing.");
   }
 
   return (
@@ -57,35 +141,34 @@ export default function AncientRuinsEncounter({ onBack }: Props) {
       </header>
 
       <section className={styles.stage}>
-        <Canvas shadows dpr={[1, 1.5]} camera={{ position: [0, 8.5, 10.5], fov: 42, near: 0.1, far: 100 }}>
-          <color attach="background" args={["#102b30"]} />
-          <ambientLight intensity={1.2} />
+        <Canvas shadows dpr={[1, 1.5]} camera={{ position: [0, 9.5, 11.5], fov: 40, near: 0.1, far: 100 }}>
+          <color attach="background" args={["#10313b"]} />
+          <ambientLight intensity={1.05} />
           <hemisphereLight args={["#dcecff", "#4b3a25", 1.3]} />
-          <directionalLight castShadow position={[-6, 11, 8]} intensity={3.4} shadow-mapSize-width={2048} shadow-mapSize-height={2048} />
-          <group rotation={[-0.12, 0, 0]} position={[0, -0.8, 0]}>
-            <StableRuinsScene sanctuaryUnlocked={sanctuaryUnlocked} />
-          </group>
-          <ContactShadows position={[0, -0.78, 0]} opacity={0.38} scale={13} blur={2.5} far={8} />
+          <directionalLight castShadow position={[-6, 12, 8]} intensity={3.5} shadow-mapSize-width={2048} shadow-mapSize-height={2048} />
+          <IslandBoard reachable={reachable} current={position} sanctuaryUnlocked={sanctuaryUnlocked} onChoose={chooseDestination} />
+          <ExplorerPawn route={route} />
+          <ContactShadows position={[0, -0.28, 0]} opacity={0.42} scale={14} blur={2.7} far={8} />
         </Canvas>
 
-        <div className={styles.poiOverlay}>
-          {POIS.map((poi) => {
-            const done = completed.includes(poi.id);
-            const locked = poi.id === "sanctuary" && !sanctuaryUnlocked;
-            return (
-              <button key={poi.id} className={`${styles.poiButton} ${styles[`poi_${poi.id}`] || ""} ${done ? styles.done : ""} ${locked ? styles.locked : ""}`} disabled={done || locked} onClick={() => choosePoi(poi)}>
-                <b>{done ? `✓ ${poi.name}` : locked ? `🔒 ${poi.name}` : poi.name}</b>
-                <span>{done ? poi.reward : poi.subtitle}</span>
-              </button>
-            );
-          })}
-        </div>
-
+        {roll !== null && <DiceResultIcon value={roll} />}
         <aside className={styles.objective}>
           <small>YOUR EXPEDITION</small>
-          <h2>{discovery ? "Discovery secured" : sanctuaryUnlocked ? "The sanctuary is open" : "Explore the ruins"}</h2>
-          <p>{discovery ? "You recovered the Sun-Crowned Idol." : sanctuaryUnlocked ? "Two successful investigations revealed the Inner Sanctuary." : "Complete two investigations to unlock the Inner Sanctuary."}</p>
+          <h2>{discovery ? "Discovery secured" : sanctuaryUnlocked ? "The sanctuary is open" : "Explore Aster Vale"}</h2>
+          <p>{message}</p>
         </aside>
+        <div className={styles.islandDice}><Dice3D onResult={applyRoll} disabled={moving || !!selected || discovery} /></div>
+        <div className={styles.poiOverlay}>
+          {NODES.map((node) => {
+            const available = reachable.includes(node.id);
+            const complete = node.poi ? completed.includes(node.poi) : false;
+            const locked = node.id === "sanctuary" && !sanctuaryUnlocked;
+            return <button key={node.id} className={`${styles.poiButton} ${styles[`poi_${node.id}`] || ""} ${available ? styles.available : ""} ${complete ? styles.done : ""} ${locked ? styles.locked : ""}`} onClick={() => chooseDestination(node.id)} disabled={!available}>
+              <b>{locked ? `🔒 ${node.name}` : complete ? `✓ ${node.name}` : node.name}</b>
+              <span>{available ? "Move here" : node.poi ? (complete ? POI_BY_ID[node.poi].reward : "Encounter site") : "Path space"}</span>
+            </button>;
+          })}
+        </div>
 
         {selected && (
           <div className={styles.modalShade}>
@@ -96,7 +179,7 @@ export default function AncientRuinsEncounter({ onBack }: Props) {
                 {selected.question.options.map((option) => <button key={option} disabled={!!result} onClick={() => answer(option)} className={result && option === selected.question.answer ? styles.correctAnswer : ""}>{option}</button>)}
               </div>
               {result && <div className={result === "correct" ? styles.correct : styles.wrong}>{result === "correct" ? `Correct — ${selected.reward}` : `Not quite — the answer is ${selected.question.answer}.`}</div>}
-              {result && <button className={styles.continue} onClick={() => { setSelected(null); setResult(null); }}>CONTINUE EXPLORING</button>}
+              {result && <button className={styles.continue} onClick={closeQuestion}>CONTINUE</button>}
             </article>
           </div>
         )}
@@ -107,25 +190,38 @@ export default function AncientRuinsEncounter({ onBack }: Props) {
   );
 }
 
-function StableRuinsScene({ sanctuaryUnlocked }: { sanctuaryUnlocked: boolean }) {
-  return (
-    <group>
-      <mesh receiveShadow position={[0, -0.42, 0]}><boxGeometry args={[10.2, 0.7, 7.4]} /><meshStandardMaterial color="#493b2c" roughness={1} /></mesh>
-      <mesh receiveShadow position={[0, -0.06, 0]}><boxGeometry args={[9.7, 0.12, 6.9]} /><meshStandardMaterial color="#718d54" roughness={0.98} /></mesh>
-      <mesh receiveShadow position={[-1.0, 0.05, -0.3]} rotation={[0, 0.12, 0]}><boxGeometry args={[6.8, 0.16, 4.8]} /><meshStandardMaterial color="#829b60" roughness={0.98} /></mesh>
-      <BrokenGate />
-      <ExcavationTrench />
-      <ScholarsTablet />
-      <InnerSanctuary unlocked={sanctuaryUnlocked} />
-      <ExplorerMini />
-      <Rubble position={[-3.3, 0.18, -1.8]} /><Rubble position={[3.2, 0.18, 2.1]} /><Rubble position={[0.1, 0.18, 2.5]} />
-    </group>
-  );
+function IslandBoard({ reachable, current, sanctuaryUnlocked, onChoose }: { reachable: NodeId[]; current: NodeId; sanctuaryUnlocked: boolean; onChoose: (id: NodeId) => void }) {
+  return <group position={[0, -0.55, 0]} rotation={[-0.08, 0, 0]}>
+    <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.16, 0]}><planeGeometry args={[16, 11]} /><meshPhysicalMaterial color="#176f83" roughness={0.22} clearcoat={0.55} /></mesh>
+    <IslandMass />
+    {EDGES.map(([a,b]) => <PathSegment key={`${a}-${b}`} a={BY_ID[a].position} b={BY_ID[b].position} />)}
+    {NODES.map((node) => <PathNode key={node.id} node={node} active={current===node.id} reachable={reachable.includes(node.id)} locked={node.id==="sanctuary"&&!sanctuaryUnlocked} onChoose={()=>onChoose(node.id)} />)}
+    <BrokenGate /><ExcavationTrench /><ScholarsTablet /><InnerSanctuary unlocked={sanctuaryUnlocked} />
+    <PalmCluster /><Rubble position={[-3.2,.2,-1.8]} /><Rubble position={[2.8,.2,1.9]} />
+  </group>;
 }
 
-function Rubble({ position }: { position: [number, number, number] }) { return <group position={position}>{[[-0.22,0,0],[0.2,0.03,0.12],[0.02,0.02,-0.2]].map((p,i)=><mesh key={i} castShadow position={p as [number,number,number]} rotation={[i*.2,i*.3,0]}><dodecahedronGeometry args={[0.22-i*.03,0]} /><meshStandardMaterial color="#9b8d6c" roughness={1} /></mesh>)}</group>; }
-function BrokenGate(){return <group position={[-2.55,0.15,1.35]} rotation={[0,.25,0]}><mesh castShadow position={[-.58,.62,0]}><boxGeometry args={[.34,1.24,.4]}/><meshStandardMaterial color="#cbbd92"/></mesh><mesh castShadow position={[.58,.5,0]}><boxGeometry args={[.34,1.0,.4]}/><meshStandardMaterial color="#b9aa82"/></mesh><mesh castShadow position={[-.08,1.16,0]} rotation={[0,0,-.08]}><boxGeometry args={[1.38,.25,.4]}/><meshStandardMaterial color="#d4c69b"/></mesh></group>}
-function ExcavationTrench(){return <group position={[2.5,.08,1.25]}><mesh receiveShadow position={[0,-.05,0]}><boxGeometry args={[1.65,.15,1.05]}/><meshStandardMaterial color="#75543b"/></mesh><mesh castShadow position={[.35,.12,.05]}><dodecahedronGeometry args={[.27,0]}/><meshStandardMaterial color="#d0be8d"/></mesh><mesh castShadow position={[-.4,.1,-.12]} rotation={[.2,.3,0]}><boxGeometry args={[.42,.1,.28]}/><meshStandardMaterial color="#c6a36a"/></mesh></group>}
-function ScholarsTablet(){return <group position={[-1.7,.18,-1.45]}><mesh castShadow position={[0,.45,0]} rotation={[-.12,.25,0]}><boxGeometry args={[.8,.9,.16]}/><meshStandardMaterial color="#b9aa80"/></mesh>{[-.16,0,.16].map(y=><mesh key={y} position={[0,.57+y,.09]}><boxGeometry args={[.46,.04,.018]}/><meshBasicMaterial color="#6f624b"/></mesh>)}</group>}
-function InnerSanctuary({unlocked}:{unlocked:boolean}){return <group position={[1.65,.12,-1.55]}><mesh castShadow position={[0,.28,0]}><boxGeometry args={[1.55,.4,1.18]}/><meshStandardMaterial color="#9f936d"/></mesh><mesh castShadow position={[0,.62,0]}><boxGeometry args={[1.2,.28,.9]}/><meshStandardMaterial color="#b8aa80"/></mesh><mesh castShadow position={[0,.9,0]}><boxGeometry args={[.76,.28,.6]}/><meshStandardMaterial color={unlocked?"#d1c091":"#777166"}/></mesh>{unlocked&&<pointLight position={[0,1.2,0]} intensity={1.4} color="#ffd36a" distance={3}/>}</group>}
-function ExplorerMini(){return <group position={[-.15,.12,.45]}><mesh castShadow><cylinderGeometry args={[.25,.3,.11,22]}/><meshStandardMaterial color="#c8a767"/></mesh><mesh castShadow position={[0,.38,0]}><capsuleGeometry args={[.14,.32,5,9]}/><meshStandardMaterial color="#b8483c"/></mesh><mesh castShadow position={[0,.68,0]}><sphereGeometry args={[.14,14,10]}/><meshStandardMaterial color="#d9b18a"/></mesh><mesh castShadow position={[0,.82,0]}><cylinderGeometry args={[.23,.18,.07,18]}/><meshStandardMaterial color="#4b3826"/></mesh></group>}
+function IslandMass(){return <group>
+  <mesh receiveShadow position={[-.7,-.36,.15]} scale={[4.7,.45,3.25]} rotation={[0,.1,0]}><cylinderGeometry args={[1,1.08,1,18]}/><meshStandardMaterial color="#59462f" roughness={1}/></mesh>
+  <mesh receiveShadow position={[.9,-.3,-.1]} scale={[3.5,.42,2.7]} rotation={[0,-.22,0]}><cylinderGeometry args={[1,1.06,1,16]}/><meshStandardMaterial color="#5f4a32" roughness={1}/></mesh>
+  <mesh receiveShadow position={[-.8,-.04,.18]} scale={[4.45,.24,3.0]} rotation={[0,.1,0]}><cylinderGeometry args={[1,1.02,1,18]}/><meshStandardMaterial color="#78965a" roughness={.98}/></mesh>
+  <mesh receiveShadow position={[1.0,.02,-.1]} scale={[3.25,.22,2.5]} rotation={[0,-.22,0]}><cylinderGeometry args={[1,1.02,1,16]}/><meshStandardMaterial color="#88a465" roughness={.98}/></mesh>
+  <mesh receiveShadow position={[-1.1,.18,-.25]} scale={[2.8,.14,1.7]} rotation={[0,.12,0]}><cylinderGeometry args={[1,1.01,1,14]}/><meshStandardMaterial color="#9bb276" roughness={.97}/></mesh>
+</group>}
+
+function PathSegment({a,b}:{a:[number,number,number];b:[number,number,number]}){const A=new THREE.Vector3(...a),B=new THREE.Vector3(...b),mid=A.clone().lerp(B,.5),distance=A.distanceTo(B),angle=Math.atan2(B.z-A.z,B.x-A.x);return <mesh receiveShadow castShadow position={[mid.x,.22,mid.z]} rotation={[0,-angle,0]}><boxGeometry args={[distance,.08,.25]}/><meshStandardMaterial color="#c8b889" roughness={.95}/></mesh>}
+function PathNode({node,active,reachable,locked,onChoose}:{node:Node;active:boolean;reachable:boolean;locked:boolean;onChoose:()=>void}){return <group position={node.position} onClick={e=>{e.stopPropagation();if(reachable)onChoose()}}>
+  <mesh castShadow position={[0,.23,0]}><cylinderGeometry args={[.26,.3,.09,20]}/><meshStandardMaterial color={locked?"#6f6b61":reachable?"#e9c761":active?"#d99043":"#d4c598"} metalness={.05}/></mesh>
+  {reachable&&<mesh rotation={[-Math.PI/2,0,0]} position={[0,.3,0]}><ringGeometry args={[.32,.47,32]}/><meshBasicMaterial color="#78ffad"/></mesh>}
+</group>}
+
+function ExplorerPawn({route}:{route:NodeId[]}){const ref=useRef<THREE.Group>(null),segment=useRef(0);useEffect(()=>{segment.current=0;const start=BY_ID[route[0]].position;if(ref.current)ref.current.position.set(start[0],.52,start[2])},[route]);useFrame((_,delta)=>{if(!ref.current)return;const idx=Math.min(segment.current,route.length-1),next=Math.min(idx+1,route.length-1),p=BY_ID[route[next]].position,target=new THREE.Vector3(p[0],.52,p[2]);ref.current.position.lerp(target,1-Math.pow(.002,delta));if(ref.current.position.distanceTo(target)<.05&&next>idx)segment.current=next});const start=BY_ID[route[0]].position;return <group ref={ref} position={[start[0],.52,start[2]]}>
+  <mesh castShadow><cylinderGeometry args={[.28,.33,.11,22]}/><meshStandardMaterial color="#c8a767"/></mesh><mesh castShadow position={[0,.4,0]}><capsuleGeometry args={[.14,.34,5,9]}/><meshStandardMaterial color="#b8483c"/></mesh><mesh castShadow position={[0,.72,0]}><sphereGeometry args={[.14,14,10]}/><meshStandardMaterial color="#d9b18a"/></mesh><mesh castShadow position={[0,.86,0]}><cylinderGeometry args={[.23,.18,.07,18]}/><meshStandardMaterial color="#4b3826"/></mesh>
+</group>}
+
+function BrokenGate(){return <group position={[-2.4,.18,.8]} rotation={[0,.25,0]}><mesh castShadow position={[-.5,.55,0]}><boxGeometry args={[.28,1.1,.34]}/><meshStandardMaterial color="#cbbd92"/></mesh><mesh castShadow position={[.5,.46,0]}><boxGeometry args={[.28,.92,.34]}/><meshStandardMaterial color="#b9aa82"/></mesh><mesh castShadow position={[-.08,1.0,0]}><boxGeometry args={[1.15,.2,.32]}/><meshStandardMaterial color="#d4c69b"/></mesh></group>}
+function ExcavationTrench(){return <group position={[1.25,.12,1.1]}><mesh receiveShadow position={[0,-.02,0]}><boxGeometry args={[1.35,.12,.8]}/><meshStandardMaterial color="#75543b"/></mesh><mesh castShadow position={[.3,.12,.05]}><dodecahedronGeometry args={[.23,0]}/><meshStandardMaterial color="#d0be8d"/></mesh></group>}
+function ScholarsTablet(){return <group position={[-1.2,.18,-1.6]}><mesh castShadow position={[0,.42,0]} rotation={[-.12,.25,0]}><boxGeometry args={[.7,.8,.14]}/><meshStandardMaterial color="#b9aa80"/></mesh></group>}
+function InnerSanctuary({unlocked}:{unlocked:boolean}){return <group position={[2.7,.16,-.35]}><mesh castShadow position={[0,.26,0]}><boxGeometry args={[1.35,.36,1.0]}/><meshStandardMaterial color="#9f936d"/></mesh><mesh castShadow position={[0,.58,0]}><boxGeometry args={[1.0,.26,.76]}/><meshStandardMaterial color="#b8aa80"/></mesh><mesh castShadow position={[0,.84,0]}><boxGeometry args={[.64,.24,.5]}/><meshStandardMaterial color={unlocked?"#d1c091":"#777166"}/></mesh>{unlocked&&<pointLight position={[0,1.1,0]} intensity={1.3} color="#ffd36a" distance={3}/>}</group>}
+function PalmCluster(){return <group position={[.8,.12,-2.3]}>{[-.45,0,.45].map((x,i)=><group key={i} position={[x,0,(i-1)*.16]}><mesh castShadow position={[0,.35,0]}><cylinderGeometry args={[.05,.08,.7,8]}/><meshStandardMaterial color="#70502f"/></mesh><mesh castShadow position={[0,.76,0]}><coneGeometry args={[.22,.55,6]}/><meshStandardMaterial color="#3f7545"/></mesh></group>)}</group>}
+function Rubble({position}:{position:[number,number,number]}){return <group position={position}>{[[-.18,0,0],[.18,.02,.1],[0,.02,-.18]].map((p,i)=><mesh key={i} castShadow position={p as [number,number,number]}><dodecahedronGeometry args={[.2-i*.03,0]}/><meshStandardMaterial color="#9b8d6c"/></mesh>)}</group>}
