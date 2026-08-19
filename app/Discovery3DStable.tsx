@@ -2,7 +2,7 @@
 
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { ContactShadows } from "@react-three/drei";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import Dice3D, { DiceResultIcon } from "./Dice3D";
 import styles from "./Discovery3DStable.module.css";
@@ -160,14 +160,14 @@ export default function Discovery3DStable() {
         <Canvas orthographic shadows dpr={[1, 1.5]} camera={{ position: [17, 15, 17], zoom: 37, near: 0.1, far: 100 }}>
           <FixedCamera />
           <color attach="background" args={["#0f2730"]} />
-          <ambientLight intensity={1.25} />
-          <hemisphereLight args={["#dceeff", "#4b3a25", 1.2]} />
-          <directionalLight castShadow position={[-8, 14, 10]} intensity={3.4} shadow-mapSize-width={2048} shadow-mapSize-height={2048} />
+          <ambientLight intensity={1.05} />
+          <hemisphereLight args={["#e0f2ff", "#4a3927", 1.25]} />
+          <directionalLight castShadow position={[-8, 14, 10]} intensity={3.5} shadow-mapSize-width={2048} shadow-mapSize-height={2048} />
           <Board reachable={reachable} selected={selected} onSelect={visit} />
           {players.map((p, i) => (
             <ExplorerPiece key={p.colour} colour={p.colour} route={routes[i] || [p.location]} lane={i} active={i === active} />
           ))}
-          <ContactShadows position={[0, -0.02, 0]} opacity={0.38} scale={25} blur={2.6} far={10} />
+          <ContactShadows position={[0, -0.02, 0]} opacity={0.42} scale={25} blur={2.8} far={10} />
         </Canvas>
 
         {roll !== null && <DiceResultIcon value={roll} />}
@@ -198,15 +198,12 @@ function FixedCamera() {
 function Board({ reachable, selected, onSelect }: { reachable: string[]; selected: string; onSelect: (id: string) => void }) {
   return (
     <group>
-      <mesh receiveShadow position={[0, -0.48, 0]}>
-        <boxGeometry args={[20, 0.8, 14]} />
-        <meshStandardMaterial color="#352419" roughness={0.9} />
+      <mesh receiveShadow position={[0, -0.5, 0]}>
+        <boxGeometry args={[20.4, 0.82, 14.4]} />
+        <meshStandardMaterial color="#332216" roughness={0.9} />
       </mesh>
-      <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.05, 0]}>
-        <planeGeometry args={[19.5, 13.5]} />
-        <meshPhysicalMaterial color="#14798d" roughness={0.22} clearcoat={0.5} />
-      </mesh>
-      {EDGES.map(([a, b]) => <Bridge key={`${a}-${b}`} a={BY_ID[a].position} b={BY_ID[b].position} />)}
+      <WaterSurface />
+      {EDGES.map(([a, b], index) => <Pathway key={`${a}-${b}`} a={BY_ID[a].position} b={BY_ID[b].position} index={index} />)}
       {LOCATIONS.map((location) => (
         <Island key={location.id} location={location} selected={selected === location.id} reachable={reachable.includes(location.id)} onClick={() => onSelect(location.id)} />
       ))}
@@ -214,41 +211,140 @@ function Board({ reachable, selected, onSelect }: { reachable: string[]; selecte
   );
 }
 
-function Bridge({ a, b }: { a: [number, number, number]; b: [number, number, number] }) {
-  const A = new THREE.Vector3(...a);
-  const B = new THREE.Vector3(...b);
-  const distance = A.distanceTo(B);
-  const midpoint = A.clone().lerp(B, 0.5);
-  const angle = Math.atan2(B.z - A.z, B.x - A.x);
+function makeWaterTexture() {
+  const size = 64;
+  const data = new Uint8Array(size * size * 4);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const i = (y * size + x) * 4;
+      const wave = 128 + Math.sin(x * 0.72 + y * 0.18) * 46 + Math.sin(y * 0.55 - x * 0.16) * 32;
+      const noise = ((x * 17 + y * 31) % 19) - 9;
+      const value = Math.max(0, Math.min(255, wave + noise));
+      data[i] = value;
+      data[i + 1] = value;
+      data[i + 2] = value;
+      data[i + 3] = 255;
+    }
+  }
+  const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  texture.needsUpdate = true;
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(5.5, 4.0);
+  return texture;
+}
+
+function WaterSurface() {
+  const texture = useMemo(() => makeWaterTexture(), []);
+  const ref = useRef<THREE.Mesh>(null);
+  useFrame(({ clock }) => {
+    texture.offset.x = clock.elapsedTime * 0.012;
+    texture.offset.y = clock.elapsedTime * -0.008;
+    if (ref.current) ref.current.position.y = -0.055 + Math.sin(clock.elapsedTime * 0.45) * 0.008;
+  });
   return (
-    <mesh castShadow receiveShadow position={[midpoint.x, 0.16, midpoint.z]} rotation={[0, -angle, 0]}>
-      <boxGeometry args={[distance, 0.16, 0.42]} />
-      <meshStandardMaterial color="#d1c19d" roughness={0.95} />
+    <mesh ref={ref} receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.055, 0]}>
+      <planeGeometry args={[19.8, 13.8, 36, 28]} />
+      <meshPhysicalMaterial
+        color="#116d86"
+        roughness={0.22}
+        metalness={0.08}
+        clearcoat={0.72}
+        clearcoatRoughness={0.18}
+        bumpMap={texture}
+        bumpScale={0.12}
+        roughnessMap={texture}
+      />
     </mesh>
   );
 }
 
+function Pathway({ a, b, index }: { a: [number, number, number]; b: [number, number, number]; index: number }) {
+  const curve = useMemo(() => {
+    const A = new THREE.Vector3(...a);
+    const B = new THREE.Vector3(...b);
+    const mid = A.clone().lerp(B, 0.5);
+    const dir = B.clone().sub(A);
+    const bend = index % 2 === 0 ? 0.24 : -0.24;
+    const perp = new THREE.Vector3(-dir.z, 0, dir.x).normalize().multiplyScalar(bend);
+    A.y = 0.15;
+    B.y = 0.15;
+    mid.add(perp);
+    mid.y = 0.15;
+    return new THREE.CatmullRomCurve3([A, mid, B]);
+  }, [a, b, index]);
+  const points = useMemo(() => curve.getSpacedPoints(10), [curve]);
+  const wooden = index % 4 === 0 || index % 4 === 3;
+  return (
+    <group>
+      <mesh castShadow receiveShadow>
+        <tubeGeometry args={[curve, 30, wooden ? 0.11 : 0.14, 8, false]} />
+        <meshStandardMaterial color={wooden ? "#6f4d2f" : "#7f735d"} roughness={0.96} />
+      </mesh>
+      {points.map((point, i) => {
+        const tangent = curve.getTangent(i / Math.max(1, points.length - 1));
+        const angle = Math.atan2(tangent.z, tangent.x);
+        return (
+          <mesh key={i} castShadow receiveShadow position={[point.x, point.y + 0.08, point.z]} rotation={[0, -angle, 0]}>
+            <boxGeometry args={[wooden ? 0.34 : 0.4, 0.1, wooden ? 0.68 : 0.58]} />
+            <meshStandardMaterial color={wooden ? (i % 2 ? "#a27b4f" : "#8e6842") : (i % 2 ? "#cbbd9c" : "#b5a789")} roughness={0.94} />
+          </mesh>
+        );
+      })}
+    </group>
+  );
+}
+
+function terrainPalette(kind: Kind) {
+  if (kind === "frozen") return { top: "#dfe9e8", top2: "#f2f5f2", rock: "#667176", shore: "#aebfc2" };
+  if (kind === "oasis") return { top: "#d4b35e", top2: "#ead488", rock: "#755d35", shore: "#d7c07d" };
+  if (kind === "volcano") return { top: "#684336", top2: "#8b5540", rock: "#342a26", shore: "#4c3730" };
+  if (kind === "city" || kind === "monument") return { top: "#879d5d", top2: "#a1b66f", rock: "#554a31", shore: "#8a8055" };
+  if (kind === "pirate" || kind === "port" || kind === "haven") return { top: "#6f8c54", top2: "#8ca968", rock: "#4c402c", shore: "#907d55" };
+  if (kind === "forest") return { top: "#55784d", top2: "#6d945d", rock: "#3f452d", shore: "#65704a" };
+  return { top: "#718f57", top2: "#8cab69", rock: "#4b3d29", shore: "#80704d" };
+}
+
+function islandShape(id: string) {
+  const seed = id.split("").reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
+  const wobble = (n: number) => ((seed * (n * 17 + 11)) % 23) / 100;
+  return [
+    { x: -0.18 + wobble(1), z: 0.06 - wobble(2), sx: 1.15 + wobble(3), sz: 0.88 + wobble(4) },
+    { x: 0.32 - wobble(5), z: -0.16 + wobble(6), sx: 0.82 + wobble(7), sz: 0.74 + wobble(8) },
+    { x: -0.42 + wobble(9), z: -0.24 + wobble(10), sx: 0.68 + wobble(11), sz: 0.64 + wobble(12) },
+  ];
+}
+
 function Island({ location, selected, reachable, onClick }: { location: Location; selected: boolean; reachable: boolean; onClick: () => void }) {
-  const colour = location.kind === "frozen" ? "#dce8e7" : location.kind === "oasis" ? "#d7bd69" : location.kind === "volcano" ? "#7b4739" : location.kind === "city" || location.kind === "monument" ? "#8da45e" : "#729257";
+  const palette = terrainPalette(location.kind);
+  const blobs = islandShape(location.id);
   return (
     <group position={location.position} onClick={(e) => { e.stopPropagation(); onClick(); }}>
-      <mesh castShadow receiveShadow position={[0, -0.25, 0]} scale={[1.15, 0.42, 0.9]}>
-        <cylinderGeometry args={[1, 1.14, 1, 20]} />
-        <meshStandardMaterial color="#4d3d28" roughness={1} />
-      </mesh>
-      <mesh castShadow receiveShadow scale={[1.1, 0.22, 0.86]}>
-        <cylinderGeometry args={[1, 1.03, 1, 20]} />
-        <meshStandardMaterial color={colour} roughness={0.95} />
+      {blobs.map((blob, i) => (
+        <group key={i} position={[blob.x, 0, blob.z]}>
+          <mesh castShadow receiveShadow position={[0, -0.32 - i * 0.015, 0]} scale={[blob.sx * 1.1, 0.46, blob.sz * 1.1]}>
+            <cylinderGeometry args={[1, 1.18, 1, 12]} />
+            <meshStandardMaterial color={palette.rock} roughness={1} />
+          </mesh>
+          <mesh castShadow receiveShadow position={[0, -0.08 + i * 0.015, 0]} scale={[blob.sx, 0.26 + i * 0.025, blob.sz]}>
+            <cylinderGeometry args={[1, 1.05, 1, 12]} />
+            <meshStandardMaterial color={i === 1 ? palette.top2 : palette.top} roughness={0.96} />
+          </mesh>
+        </group>
+      ))}
+      <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.005, 0]} scale={[1.22, 1.0, 1.0]}>
+        <ringGeometry args={[1.0, 1.18, 28]} />
+        <meshStandardMaterial color={palette.shore} roughness={0.92} transparent opacity={0.7} />
       </mesh>
       {reachable && (
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.15, 0]}>
-          <ringGeometry args={[0.9, 1.13, 40]} />
-          <meshBasicMaterial color="#79ffb0" />
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.18, 0]}>
+          <ringGeometry args={[1.08, 1.3, 40]} />
+          <meshBasicMaterial color="#79ffb0" transparent opacity={0.95} />
         </mesh>
       )}
       {selected && (
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.17, 0]}>
-          <ringGeometry args={[1.14, 1.24, 40]} />
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.2, 0]}>
+          <ringGeometry args={[1.31, 1.39, 40]} />
           <meshBasicMaterial color="#f5cf69" />
         </mesh>
       )}
@@ -259,24 +355,24 @@ function Island({ location, selected, reachable, onClick }: { location: Location
 
 function Model({ kind }: { kind: Kind }) {
   if (kind === "frozen") {
-    return <group>{[-0.35, 0.2, 0.7].map((x, i) => <mesh key={i} castShadow position={[x, 0.45, (i - 1) * 0.08]}><coneGeometry args={[0.32, 1.05, 6]} /><meshStandardMaterial color="#f0f5f3" /></mesh>)}</group>;
+    return <group>{[-0.38, 0.08, 0.62].map((x, i) => <mesh key={i} castShadow position={[x, 0.5, (i - 1) * 0.12]}><coneGeometry args={[0.34, 1.1, 6]} /><meshStandardMaterial color={i === 1 ? "#ffffff" : "#dce7e7" /></mesh>)}</group>;
   }
   if (kind === "ruins" || kind === "temple") {
-    return <group>{[-0.4, 0, 0.4].map((x, i) => <mesh key={i} castShadow position={[x, 0.45, 0]}><cylinderGeometry args={[0.09, 0.12, 0.9, 10]} /><meshStandardMaterial color="#d1c49b" /></mesh>)}<mesh castShadow position={[0, 0.9, 0]}><boxGeometry args={[1.1, 0.12, 0.25]} /><meshStandardMaterial color="#b9aa81" /></mesh></group>;
+    return <group>{[-0.42, 0, 0.42].map((x, i) => <mesh key={i} castShadow position={[x, 0.48, 0]}><cylinderGeometry args={[0.09, 0.12, 0.94, 10]} /><meshStandardMaterial color="#d1c49b" /></mesh>)}<mesh castShadow position={[0, 0.94, 0]}><boxGeometry args={[1.12, 0.12, 0.25]} /><meshStandardMaterial color="#b9aa81" /></mesh></group>;
   }
   if (kind === "oasis") {
-    return <group><mesh position={[0, 0.2, 0]} rotation={[-Math.PI / 2, 0, 0]}><circleGeometry args={[0.38, 24]} /><meshStandardMaterial color="#2c91a1" /></mesh><mesh castShadow position={[-0.45, 0.45, 0]}><cylinderGeometry args={[0.05, 0.08, 0.8, 8]} /><meshStandardMaterial color="#76522e" /></mesh></group>;
+    return <group><mesh position={[0, 0.2, 0]} rotation={[-Math.PI / 2, 0, 0]}><circleGeometry args={[0.42, 24]} /><meshPhysicalMaterial color="#2c91a1" clearcoat={0.5} /></mesh><mesh castShadow position={[-0.48, 0.45, 0]}><cylinderGeometry args={[0.05, 0.08, 0.8, 8]} /><meshStandardMaterial color="#76522e" /></mesh></group>;
   }
   if (kind === "volcano") {
-    return <mesh castShadow position={[0, 0.45, 0]}><coneGeometry args={[0.55, 1.15, 8]} /><meshStandardMaterial color="#623c31" /></mesh>;
+    return <group><mesh castShadow position={[0, 0.48, 0]}><coneGeometry args={[0.58, 1.2, 8]} /><meshStandardMaterial color="#623c31" /></mesh><mesh position={[0, 1.02, 0]}><cylinderGeometry args={[0.16, 0.22, 0.05, 16]} /><meshBasicMaterial color="#ff6a32" /></mesh></group>;
   }
   if (kind === "city" || kind === "monument") {
-    return <group>{[-0.38, 0, 0.38].map((x, i) => <mesh key={i} castShadow position={[x, 0.4, 0]}><boxGeometry args={[0.4, 0.7, 0.4]} /><meshStandardMaterial color="#c59b45" /></mesh>)}<mesh castShadow position={[0, 0.85, 0]}><sphereGeometry args={[0.3, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2]} /><meshStandardMaterial color="#ddb44b" /></mesh></group>;
+    return <group>{[-0.4, 0, 0.4].map((x, i) => <mesh key={i} castShadow position={[x, 0.42, 0]}><boxGeometry args={[0.42, 0.72, 0.42]} /><meshStandardMaterial color="#c59b45" /></mesh>)}<mesh castShadow position={[0, 0.9, 0]}><sphereGeometry args={[0.32, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2]} /><meshStandardMaterial color="#ddb44b" /></mesh></group>;
   }
   if (kind === "forest") {
-    return <group>{[-0.4, 0, 0.4].map((x, i) => <mesh key={i} castShadow position={[x, 0.55, 0]}><coneGeometry args={[0.25, 0.8, 7]} /><meshStandardMaterial color="#2f6848" /></mesh>)}</group>;
+    return <group>{[-0.48, 0, 0.48].map((x, i) => <mesh key={i} castShadow position={[x, 0.58, (i - 1) * 0.08]}><coneGeometry args={[0.28, 0.86, 7]} /><meshStandardMaterial color={i === 1 ? "#285c3f" : "#356f4d"} /></mesh>)}</group>;
   }
-  return <mesh castShadow position={[0, 0.4, 0]}><boxGeometry args={[0.75, 0.6, 0.6]} /><meshStandardMaterial color="#a36f45" /></mesh>;
+  return <mesh castShadow position={[0, 0.42, 0]}><boxGeometry args={[0.78, 0.62, 0.62]} /><meshStandardMaterial color="#a36f45" /></mesh>;
 }
 
 function ExplorerPiece({ colour, route, lane, active }: { colour: Colour; route: string[]; lane: number; active: boolean }) {
@@ -288,13 +384,13 @@ function ExplorerPiece({ colour, route, lane, active }: { colour: Colour; route:
     const index = Math.min(segment.current, route.length - 1);
     const next = Math.min(index + 1, route.length - 1);
     const p = BY_ID[route[next]].position;
-    const target = new THREE.Vector3(p[0] + (lane - 1.5) * 0.2, 0.65, p[2] + (lane % 2 ? 0.16 : -0.16));
+    const target = new THREE.Vector3(p[0] + (lane - 1.5) * 0.2, 0.68, p[2] + (lane % 2 ? 0.16 : -0.16));
     ref.current.position.lerp(target, 1 - Math.pow(0.002, delta));
     if (ref.current.position.distanceTo(target) < 0.06 && next > index) segment.current = next;
   });
   const start = BY_ID[route[0]].position;
   return (
-    <group ref={ref} position={[start[0] + (lane - 1.5) * 0.2, 0.65, start[2] + (lane % 2 ? 0.16 : -0.16)]}>
+    <group ref={ref} position={[start[0] + (lane - 1.5) * 0.2, 0.68, start[2] + (lane % 2 ? 0.16 : -0.16)]}>
       <mesh castShadow><cylinderGeometry args={[active ? 0.3 : 0.26, active ? 0.34 : 0.3, 0.12, 24]} /><meshStandardMaterial color={active ? "#f0cd66" : "#c6a76c"} /></mesh>
       <mesh castShadow position={[0, 0.38, 0]}><capsuleGeometry args={[0.15, 0.34, 5, 10]} /><meshStandardMaterial color={COLOUR[colour]} /></mesh>
       <mesh castShadow position={[0, 0.7, 0]}><sphereGeometry args={[0.15, 16, 10]} /><meshStandardMaterial color="#ddb78f" /></mesh>
