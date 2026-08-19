@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import styles from "./Dice3D.module.css";
 
-type Dice3DProps = { disabled?: boolean; onResult: (value: number) => void };
+type Dice3DProps = { disabled?: boolean; onResult: (value: number) => void; sides?: 4 | 6 };
 type RollState = { startedAt: number; result: number; settleQuaternion: THREE.Quaternion | null; targetQuaternion: THREE.Quaternion | null };
 
 const PIP_LAYOUTS: Record<number, [number, number][]> = {
@@ -49,7 +49,7 @@ function CameraRig() {
   return null;
 }
 
-function BrassDie({ disabled, onResult, rolling, setRolling, setVisibleResult, setFlying, trigger }: Dice3DProps & { rolling: boolean; setRolling: (v: boolean) => void; setVisibleResult: (v: number | null) => void; setFlying: (v: boolean) => void; trigger: number }) {
+function BrassDie({ disabled, onResult, sides = 6, rolling, setRolling, setVisibleResult, setFlying, trigger }: Dice3DProps & { rolling: boolean; setRolling: (v: boolean) => void; setVisibleResult: (v: number | null) => void; setFlying: (v: boolean) => void; trigger: number }) {
   const group = useRef<THREE.Group>(null);
   const state = useRef<RollState | null>(null);
   const finished = useRef(false);
@@ -61,7 +61,7 @@ function BrassDie({ disabled, onResult, rolling, setRolling, setVisibleResult, s
 
   function beginRoll() {
     if (disabled || rolling || !group.current) return;
-    const result = Math.floor(Math.random() * 6) + 1;
+    const result = Math.floor(Math.random() * sides) + 1;
     setVisibleResult(null);
     setFlying(false);
     state.current = { startedAt: performance.now(), result, settleQuaternion: null, targetQuaternion: null };
@@ -126,7 +126,7 @@ export function DiceResultIcon({ value }: { value: number }) {
   return <div className={styles.persistentResult} aria-label={`Last roll ${value}`}><ResultFace value={value} /></div>;
 }
 
-export default function Dice3D({ disabled = false, onResult }: Dice3DProps) {
+export default function Dice3D({ disabled = false, onResult, sides = 6 }: Dice3DProps) {
   const [rolling, setRolling] = useState(false);
   const [visibleResult, setVisibleResult] = useState<number | null>(null);
   const [flying, setFlying] = useState(false);
@@ -135,11 +135,11 @@ export default function Dice3D({ disabled = false, onResult }: Dice3DProps) {
   return <div className={`${styles.root} ${rolling ? styles.rolling : ""}`}>
     <Canvas shadows dpr={[1, 1.6]} camera={{ position: [0, 3.5, 8.5], fov: 39 }} gl={{ antialias: true, alpha: true }}>
       <CameraRig /><ambientLight intensity={.9} /><directionalLight position={[-4, 7, 5]} intensity={3.1} castShadow shadow-mapSize-width={1024} shadow-mapSize-height={1024} /><pointLight position={[3, 3, 4]} intensity={13} color="#e0ac55" distance={10} />
-      <BrassDie disabled={disabled} onResult={onResult} rolling={rolling} setRolling={setRolling} setVisibleResult={setVisibleResult} setFlying={setFlying} trigger={trigger} />
+      <BrassDie disabled={disabled} onResult={onResult} sides={sides} rolling={rolling} setRolling={setRolling} setVisibleResult={setVisibleResult} setFlying={setFlying} trigger={trigger} />
       <ContactShadows position={[0, .035, 0]} opacity={.46} scale={8} blur={2.5} far={5} />
     </Canvas>
     {visibleResult !== null && <div className={`${styles.flyawayDie} ${flying ? styles.flyawayActive : ""}`}><ResultFace value={visibleResult} /></div>}
-    <div className={styles.instruction} aria-live="polite"><b>{rolling ? (visibleResult ? `You rolled ${visibleResult}` : "Rolling…") : "Tap the brass die"}</b><span>{rolling ? "The rolled face is presented to you" : "Roll 1–6 spaces"}</span></div>
-    <button type="button" disabled={disabled || rolling} onClick={() => setTrigger((v) => v + 1)} style={{ position: "absolute", left: "50%", bottom: 8, transform: "translateX(-50%)", zIndex: 120, minWidth: 118, padding: "8px 14px", borderRadius: 999, border: "1px solid rgba(224,177,83,.75)", background: "rgba(20,26,22,.96)", color: "#f0d18d", fontFamily: "Georgia,serif", fontWeight: 700, letterSpacing: ".08em", cursor: disabled || rolling ? "default" : "pointer" }}>{rolling ? "ROLLING…" : "ROLL DIE"}</button>
+    <div className={styles.instruction} aria-live="polite"><b>{rolling ? (visibleResult ? `You rolled ${visibleResult}` : "Rolling…") : "Tap the brass die"}</b><span>{rolling ? "The rolled face is presented to you" : `Roll 1–${sides} spaces`}</span></div>
+    <button type="button" disabled={disabled || rolling} onClick={() => setTrigger((v) => v + 1)} style={{ position: "absolute", left: "50%", bottom: 8, transform: "translateX(-50%)", zIndex: 120, minWidth: 118, padding: "8px 14px", borderRadius: 999, border: "1px solid rgba(224,177,83,.75)", background: "rgba(20,26,22,.96)", color: "#f0d18d", fontFamily: "Georgia,serif", fontWeight: 700, letterSpacing: ".08em", cursor: disabled || rolling ? "default" : "pointer" }}>{rolling ? "ROLLING…" : `ROLL D${sides}`}</button>
   </div>;
 }
